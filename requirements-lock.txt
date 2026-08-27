@@ -1,0 +1,11 @@
+# Reproducible CPU research environment for Python 3.11.
+# Install PyTorch separately when GPU/CUDA-specific wheels are required.
+matplotlib==3.8.0
+numpy==1.24.3
+pandas==2.2.0
+Pillow==10.1.0
+PyYAML==6.0.3
+scikit-learn==1.8.0
+pytest==9.0.2
+torch==2.5.1
+torchvision==0.20.1

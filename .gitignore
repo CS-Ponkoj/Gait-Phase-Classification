@@ -1,6 +1,9 @@
 # Python
 __pycache__/
 *.py[cod]
+build/
+dist/
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -11,6 +14,7 @@ venv/
 # Local raw and processed datasets
 /data/raw/
 /data/processed/
+/data/manifests/generated/
 /legacy/training_workspace/dataset_a/
 /legacy/training_workspace/Train/
 /legacy/training_workspace/Test/
@@ -18,6 +22,7 @@ venv/
 # Generated models and experiment outputs
 /artifacts/models/
 /artifacts/runs/
+/artifacts/paper_assets/
 /legacy/training_workspace/models/
 *.h5
 *.keras
@@ -33,6 +38,8 @@ venv/
 /docs/references/
 /docs/assets/reference/
 /inventory/**/preserved_originals/
+/annotations/working/
+/annotations/adjudicated/
 
 # Temporary files
 ~$*

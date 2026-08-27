@@ -1,0 +1,2 @@
+dataset,subject_id,sequence_id,cycle_id,initial_contact_frame,mid_stance_frame,terminal_stance_frame,swing_frame,next_initial_contact_frame,annotator_id,confidence,notes
+casia_c,casia_c:001,casia_c:001:fn00,cycle_001,52,58,66,74,88,annotator_1,high,example only - delete before annotation

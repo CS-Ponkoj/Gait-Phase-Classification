@@ -1,0 +1,33 @@
+study:
+  name: casia_four_phase_pooled
+  seed: 20260827
+  labels:
+    - initial_contact_loading
+    - mid_stance
+    - terminal_stance_preswing
+    - swing
+  excluded_datasets:
+    - ou_isir_treadmill_b
+
+data:
+  casia_a_root: legacy/training_workspace/dataset_a
+  casia_c_root: data/raw/casia_c
+  manifest: data/manifests/generated/casia_a_c_manifest.csv
+  image_size: [128, 128]
+  test_subject_fraction: 0.20
+  development_folds: 5
+  annotation_kappa_threshold: 0.80
+
+training:
+  batch_size: 32
+  epochs: 30
+  early_stopping_patience: 5
+  learning_rate: 0.001
+  temporal_window: 9
+  class_weighting: balanced
+  augmentation: true
+
+evaluation:
+  primary_metric: subject_macro_f1
+  bootstrap_iterations: 2000
+  confidence_level: 0.95

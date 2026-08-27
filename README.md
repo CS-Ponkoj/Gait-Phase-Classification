@@ -1,15 +1,17 @@
 # Gait Phase Classification
 
-Research workspace for single-frame gait event and gait phase classification experiments.
+Research workspace for a reproducible, subject-independent four-phase gait classification study across visible and thermal silhouette sequences.
 
-The project is preserved but not yet reproducible. Historical experiments, datasets, checkpoints, manuscripts, and presentations have been organized without rewriting the original training code or changing scientific results.
+The historical project is preserved unchanged under `legacy/`. A new publication-oriented Python package now provides data inventory, annotation QA, leakage-controlled splitting, baseline/model contracts, subject-level evaluation, and paper-asset generation. The research results are **not yet publication-ready** because four-phase expert annotations and final experiments do not exist.
 
 ## Current research status
 
-- Historical code evaluates three labels: `heel_strike`, `toe_off`, and `other`.
-- The manuscript also discusses binary `stance` versus `swing` classification.
-- The canonical prediction task must be selected before new training begins.
-- Existing accuracy claims require a new subject-independent evaluation before they can be treated as validated results.
+- The canonical task is locked to four operational visual phases: initial contact/loading, mid-stance, terminal stance/pre-swing, and swing.
+- Historical three-class and binary results are retained only as background and are not evidence for the new study.
+- CASIA A is currently a 4,571-image curated subset with unresolved completeness/provenance.
+- CASIA C contains 153 verified subject archives and 100,346 PNG frames across walking conditions.
+- OU-ISIR is excluded from the publication study.
+- Existing accuracy claims must not be reused; new subject-independent results must be generated from adjudicated labels.
 - Five Dataset A duplicate groups contain identical image content under conflicting labels and require review.
 
 See [`inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md`](inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md) for the evidence-backed preservation and data-lineage review.
@@ -62,8 +64,24 @@ The historical workspace is evidence, not a clean training pipeline. It currentl
 
 ## Recommended next engineering phase
 
-1. Select one canonical task and label vocabulary.
-2. Create a dataset manifest with subject, sequence, frame, label, source, and split fields.
-3. Resolve conflicting identical-image labels.
-4. Build a subject-independent train/validation/test split.
-5. Create a reproducible Python package and one trustworthy baseline.
+The engineering framework is implemented. Human research work is now the critical path:
+
+1. Resolve or reacquire CASIA A provenance.
+2. Complete the two-annotator pilot using [`docs/annotation_protocol.md`](docs/annotation_protocol.md).
+3. Reach weighted kappa >= 0.80 and obtain expert adjudication.
+4. Freeze the four-phase manifest and subject partitions.
+5. Run the registered baselines and temporal experiment, then generate the paper evidence.
+
+## Reproducible commands
+
+```powershell
+python -m pip install -e .
+gait-phase extract-casia-c
+gait-phase build-manifest
+gait-phase validate-data data/manifests/generated/casia_a_c_manifest.csv
+gait-phase make-splits data/manifests/generated/casia_a_c_manifest.csv --output data/manifests/generated/casia_a_c_split.csv
+```
+
+See [`docs/reproducibility.md`](docs/reproducibility.md), [`docs/experimental_protocol.md`](docs/experimental_protocol.md), [`docs/DATA_STATEMENT.md`](docs/DATA_STATEMENT.md), and [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
+
+The current real-corpus gate results are recorded in [`docs/DATA_AUDIT_2026-08-27.md`](docs/DATA_AUDIT_2026-08-27.md).
