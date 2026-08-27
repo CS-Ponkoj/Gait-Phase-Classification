@@ -1,0 +1,5 @@
+﻿collection,files,exact_content_matches,unmatched_files,label_agreements,label_conflicts,source,result
+Gait Train,1172,1172,0,1172,7,Gait/dataset_a extracted from the initial Gait/dataset_a.zip,REVIEW
+Gait Test,30,30,0,30,0,Gait/dataset_a extracted from the initial Gait/dataset_a.zip,PASS
+Current classified,932,932,0,932,8,Gait/dataset_a extracted from the initial Gait/dataset_a.zip,REVIEW
+Legacy classified,625,625,0,625,4,Gait/dataset_a extracted from the initial Gait/dataset_a.zip,REVIEW

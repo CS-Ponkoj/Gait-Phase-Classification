@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Local raw and processed datasets
+/data/raw/
+/data/processed/
+/legacy/training_workspace/dataset_a/
+/legacy/training_workspace/Train/
+/legacy/training_workspace/Test/
+
+# Generated models and experiment outputs
+/artifacts/models/
+/artifacts/runs/
+/legacy/training_workspace/models/
+*.h5
+*.keras
+*.onnx
+*.pt
+*.pth
+
+# Large archives
+*.zip
+
+# Local-only preserved and third-party material
+/docs/coursework/
+/docs/references/
+/docs/assets/reference/
+/inventory/**/preserved_originals/
+
+# Temporary files
+~$*
+*.tmp
+*.log
+Thumbs.db
+.DS_Store
