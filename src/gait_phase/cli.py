@@ -19,6 +19,7 @@ from .manifest import build_manifest, duplicate_audit, manifest_summary, validat
 from .metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
 from .models import build_frame_cnn, build_temporal_tcn
 from .paper_assets import make_paper_assets
+from .pilot import build_pilot_package
 from .splits import assert_split_integrity, make_subject_splits
 from .training import (
     create_run_directory,
@@ -150,6 +151,26 @@ def command_annotation_report(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "PASS" else 1
 
 
+def command_make_pilot(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    workspace = _workspace(args.workspace)
+    manifest = pd.read_csv(args.manifest, dtype=str, keep_default_na=False)
+    errors = validate_manifest(manifest)
+    if errors:
+        raise ValueError("Manifest validation failed: " + "; ".join(errors))
+    settings = config["annotation_pilot"]
+    output = Path(args.output) if args.output else workspace / settings["output"]
+    summary = build_pilot_package(
+        manifest=manifest,
+        workspace=workspace,
+        output=output,
+        settings=settings,
+        seed=int(config["study"]["seed"]),
+    )
+    print(json.dumps({"output": str(output.resolve()), **summary}, indent=2))
+    return 0
+
+
 def command_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     config["training"]["augmentation"] = bool(args.augmentation)
@@ -251,6 +272,12 @@ def build_parser() -> argparse.ArgumentParser:
     annotation.add_argument("--fps", type=float, required=True)
     annotation.add_argument("--threshold", type=float, default=0.80)
     annotation.set_defaults(function=command_annotation_report)
+    pilot = subparsers.add_parser("make-annotation-pilot", help="Create a deterministic blinded two-annotator pilot package.")
+    pilot.add_argument("manifest")
+    pilot.add_argument("--config", default="configs/study.yaml")
+    pilot.add_argument("--workspace")
+    pilot.add_argument("--output")
+    pilot.set_defaults(function=command_make_pilot)
     train = subparsers.add_parser("train", help="Train a baseline or four-output neural model.")
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/study.yaml")

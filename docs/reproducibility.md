@@ -30,6 +30,14 @@ After independent annotation and adjudication, validate the frozen manifest:
 gait-phase validate-data data/manifests/generated/casia_a_c_frozen.csv --frozen
 ```
 
+Create the blinded development-only annotation pilot with:
+
+```powershell
+gait-phase make-annotation-pilot data/manifests/generated/casia_a_c_split.csv
+```
+
+The local package is written to `annotations/pilot/pilot_v1/` and is ignored by Git because it contains licensed image copies. Give each annotator only their assigned CSV, the frame folders, previews, protocol, and annotator README. Keep `coordinator_key.csv` private until both independent files are returned.
+
 ## Training and evaluation
 
 Run development folds first:

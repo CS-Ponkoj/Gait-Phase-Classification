@@ -31,3 +31,9 @@ evaluation:
   primary_metric: subject_macro_f1
   bootstrap_iterations: 2000
   confidence_level: 0.95
+
+annotation_pilot:
+  output: annotations/pilot/pilot_v1
+  casia_a_sequences: 4
+  casia_c_sequences_per_family: 2
+  gif_duration_ms: 120

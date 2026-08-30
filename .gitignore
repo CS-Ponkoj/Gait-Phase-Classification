@@ -40,6 +40,7 @@ venv/
 /inventory/**/preserved_originals/
 /annotations/working/
 /annotations/adjudicated/
+/annotations/pilot/
 
 # Temporary files
 ~$*

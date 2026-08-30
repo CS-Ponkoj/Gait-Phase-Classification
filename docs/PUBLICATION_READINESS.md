@@ -16,11 +16,12 @@ Overall assessment: **Needs revision**
 - Test-set access acknowledgement and machine-generated paper evidence
 - Data statement, model card, experimental protocol, reproduction guide, and conference-paper outline
 - Real A+C audit covering 104,917 frames, 173 subjects, exact duplicates, perceptual candidates, and locked subject counts
+- Deterministic blinded pilot generation with 12 distinct development subjects, 755 frames, balanced condition-family coverage, frame-indexed previews, and separate annotator templates
 
 ## Publication blockers
 
 1. CASIA A is a curated subset; complete official provenance has not been re-established.
-2. No four-phase annotations, second annotator records, or expert adjudication exist.
+2. The blinded pilot package exists locally, but neither annotator has returned completed boundaries and no expert adjudication exists.
 3. The weighted-kappa >= 0.80 gate has not been run on real annotations.
 4. No model has been trained or evaluated for the new task.
 5. No untouched-test predictions, confidence intervals, ablations, or cross-dataset results exist.
