@@ -13,7 +13,7 @@ The historical project is preserved unchanged under `legacy/`. A new publication
 - OU-ISIR is excluded from the publication study.
 - Existing accuracy claims must not be reused; new subject-independent results must be generated from adjudicated labels.
 - Five Dataset A duplicate groups contain identical image content under conflicting labels and require review.
-- A deterministic blinded 12-sequence annotation pilot generator is available; the local `pilot_v1` package contains 755 development-only frames.
+- A deterministic blinded 12-sequence CASIA C annotation pilot generator is available. It rejects frame-incomplete sequences and balances normal, slow, fast, and bag-carrying conditions.
 
 See [`inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md`](inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md) for the evidence-backed preservation and data-lineage review.
 
@@ -68,7 +68,7 @@ The historical workspace is evidence, not a clean training pipeline. It currentl
 The engineering framework is implemented. Human research work is now the critical path:
 
 1. Resolve or reacquire CASIA A provenance.
-2. Give each annotator the blinded `annotations/pilot/pilot_v1` package and complete the pilot using [`docs/annotation_protocol.md`](docs/annotation_protocol.md).
+2. Give each annotator the blinded `annotations/pilot/pilot_v3` package and complete the pilot using [`docs/annotation_protocol.md`](docs/annotation_protocol.md). CASIA A is excluded until complete source sequences are reacquired; visually corrupted pilot sequences are recorded in the configuration exclusion list.
 3. Reach weighted kappa >= 0.80 and obtain expert adjudication.
 4. Freeze the four-phase manifest and subject partitions.
 5. Run the registered baselines and temporal experiment, then generate the paper evidence.

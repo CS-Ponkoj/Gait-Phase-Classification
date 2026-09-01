@@ -41,17 +41,38 @@ def pilot_manifest(workspace: Path) -> pd.DataFrame:
 
 def test_pilot_selection_is_balanced_distinct_and_deterministic(tmp_path):
     manifest = pilot_manifest(tmp_path)
-    left = select_pilot_sequences(manifest, seed=7, casia_a_sequences=4, casia_c_sequences_per_family=2)
-    right = select_pilot_sequences(manifest, seed=7, casia_a_sequences=4, casia_c_sequences_per_family=2)
+    left = select_pilot_sequences(manifest, seed=7, casia_c_sequences_per_family=3)
+    right = select_pilot_sequences(manifest, seed=7, casia_c_sequences_per_family=3)
     assert left["sequence_id"].tolist() == right["sequence_id"].tolist()
     assert left["subject_id"].nunique() == 12
     assert left["condition_family"].value_counts().to_dict() == {
-        "casia_a": 4,
-        "normal": 2,
-        "slow": 2,
-        "fast": 2,
-        "bag": 2,
+        "normal": 3,
+        "slow": 3,
+        "fast": 3,
+        "bag": 3,
     }
+    assert set(left["dataset"]) == {"casia_c"}
+
+
+def test_pilot_selection_excludes_incomplete_sequences(tmp_path):
+    manifest = pilot_manifest(tmp_path)
+    target = manifest[manifest["dataset"].eq("casia_c")]["sequence_id"].iloc[0]
+    gap_row = manifest[manifest["sequence_id"].eq(target)].sort_values("frame_index").index[1]
+    manifest = manifest.drop(gap_row)
+    selected = select_pilot_sequences(manifest, seed=7, casia_c_sequences_per_family=3)
+    assert target not in set(selected["sequence_id"])
+
+
+def test_pilot_selection_honors_visual_qc_exclusions(tmp_path):
+    manifest = pilot_manifest(tmp_path)
+    target = manifest[manifest["dataset"].eq("casia_c")]["sequence_id"].iloc[0]
+    selected = select_pilot_sequences(
+        manifest,
+        seed=7,
+        casia_c_sequences_per_family=3,
+        excluded_sequence_ids={target},
+    )
+    assert target not in set(selected["sequence_id"])
 
 
 def test_pilot_package_is_blinded_and_contains_previews(tmp_path):
@@ -64,7 +85,7 @@ def test_pilot_package_is_blinded_and_contains_previews(tmp_path):
         manifest,
         workspace=tmp_path,
         output=output,
-        settings={"casia_a_sequences": 4, "casia_c_sequences_per_family": 2, "gif_duration_ms": 50},
+        settings={"version": "pilot_v3", "casia_c_sequences_per_family": 3, "gif_duration_ms": 50},
         seed=7,
     )
     assert summary["sequences"] == 12

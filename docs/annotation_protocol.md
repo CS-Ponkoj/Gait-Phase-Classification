@@ -35,7 +35,7 @@ The software assigns all frames between adjacent boundaries to one of the four l
 
 ## Pilot and calibration
 
-1. Select sequences spanning CASIA A views and all CASIA C conditions (`fn`, `fs`, `fq`, and `fb`).
+1. Select complete CASIA C sequences spanning all conditions (`fn`, `fs`, `fq`, and `fb`). CASIA A is excluded until complete source sequences are reacquired.
 2. Two annotators independently label the same pilot cycles after reading this guide.
 3. Compare weighted Cohen's kappa, raw frame agreement, and mean boundary error.
 4. Review disagreements without model predictions being visible.

@@ -33,7 +33,19 @@ evaluation:
   confidence_level: 0.95
 
 annotation_pilot:
-  output: annotations/pilot/pilot_v1
-  casia_a_sequences: 4
-  casia_c_sequences_per_family: 2
+  version: pilot_v3
+  output: annotations/pilot/pilot_v3
+  casia_c_sequences_per_family: 3
+  excluded_sequence_ids:
+    - casia_c:150:fn03
+    - casia_c:147:fn01
   gif_duration_ms: 120
+
+auto_annotation:
+  version: v0.1-ai
+  output: annotations/provisional/v0.1-ai
+  expected_step_frames:
+    fn: 13
+    fs: 16
+    fq: 12
+    fb: 13

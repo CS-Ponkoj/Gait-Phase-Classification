@@ -32,8 +32,8 @@ def _stable_key(value: str, seed: int) -> str:
 def select_pilot_sequences(
     manifest: pd.DataFrame,
     seed: int,
-    casia_a_sequences: int = 4,
-    casia_c_sequences_per_family: int = 2,
+    casia_c_sequences_per_family: int = 3,
+    excluded_sequence_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     required = {"dataset", "subject_id", "sequence_id", "condition", "split", "relative_path", "frame_index", "exclusion_reason"}
     if missing := required - set(manifest.columns):
@@ -43,17 +43,31 @@ def select_pilot_sequences(
     ].copy()
     if eligible.empty:
         raise ValueError("No eligible development samples are available for the pilot.")
+    eligible["numeric_frame_index"] = pd.to_numeric(eligible["frame_index"], errors="raise")
     eligible["condition_family"] = [
         condition_family(dataset, condition)
         for dataset, condition in zip(eligible["dataset"], eligible["condition"])
     ]
     sequence_table = (
         eligible.groupby(["dataset", "condition_family", "condition", "subject_id", "sequence_id"])
-        .agg(frame_count=("relative_path", "size"), first_frame=("frame_index", "min"), last_frame=("frame_index", "max"))
+        .agg(
+            frame_count=("relative_path", "size"),
+            first_frame=("numeric_frame_index", "min"),
+            last_frame=("numeric_frame_index", "max"),
+        )
         .reset_index()
     )
+    sequence_table["is_contiguous"] = (
+        sequence_table["last_frame"] - sequence_table["first_frame"] + 1
+    ).eq(sequence_table["frame_count"])
+    sequence_table = sequence_table[
+        sequence_table["dataset"].eq("casia_c") & sequence_table["is_contiguous"]
+    ].copy()
+    if excluded_sequence_ids:
+        sequence_table = sequence_table[
+            ~sequence_table["sequence_id"].isin(excluded_sequence_ids)
+        ].copy()
     quotas = {
-        "casia_a": int(casia_a_sequences),
         "normal": int(casia_c_sequences_per_family),
         "slow": int(casia_c_sequences_per_family),
         "fast": int(casia_c_sequences_per_family),
@@ -61,7 +75,7 @@ def select_pilot_sequences(
     }
     selected_rows: list[pd.Series] = []
     used_subjects: set[str] = set()
-    for family in ("casia_a", "normal", "slow", "fast", "bag"):
+    for family in ("normal", "slow", "fast", "bag"):
         candidates = sequence_table[sequence_table["condition_family"] == family].copy()
         if candidates.empty:
             raise ValueError(f"No pilot candidates found for condition family: {family}")
@@ -148,8 +162,8 @@ def build_pilot_package(
     selected = select_pilot_sequences(
         manifest,
         seed=seed,
-        casia_a_sequences=int(settings["casia_a_sequences"]),
         casia_c_sequences_per_family=int(settings["casia_c_sequences_per_family"]),
+        excluded_sequence_ids=set(settings.get("excluded_sequence_ids", [])),
     )
     frames_root, previews_root = output / "frames", output / "previews"
     frames_root.mkdir()
@@ -191,7 +205,7 @@ def build_pilot_package(
         "\n".join(f"{row.blind_sequence_id}:{row.sequence_id}" for row in selected.itertuples()).encode("utf-8")
     ).hexdigest()
     summary = {
-        "pilot_version": "pilot_v1",
+        "pilot_version": str(settings.get("version", "pilot_v2")),
         "sequences": int(len(selected)),
         "subjects": int(selected["subject_id"].nunique()),
         "frames": int(selected["frame_count"].sum()),

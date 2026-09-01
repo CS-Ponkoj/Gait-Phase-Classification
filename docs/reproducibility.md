@@ -36,7 +36,7 @@ Create the blinded development-only annotation pilot with:
 gait-phase make-annotation-pilot data/manifests/generated/casia_a_c_split.csv
 ```
 
-The local package is written to `annotations/pilot/pilot_v1/` and is ignored by Git because it contains licensed image copies. Give each annotator only their assigned CSV, the frame folders, previews, protocol, and annotator README. Keep `coordinator_key.csv` private until both independent files are returned.
+The local package is written to `annotations/pilot/pilot_v3/` and is ignored by Git because it contains licensed image copies. It contains complete CASIA C sequences only; the incomplete CASIA A subset is not used for boundary labeling. Sequences rejected during visual quality control are listed explicitly in `configs/study.yaml`. Give each annotator only their assigned archive. Keep `coordinator_key.csv` private until both independent files are returned.
 
 ## Training and evaluation
 

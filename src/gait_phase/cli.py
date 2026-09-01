@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .annotations import annotation_agreement, boundary_disagreement, expand_boundaries, validate_boundaries
+from .auto_annotations import build_provisional_release
 from .baselines import CyclePriorBaseline, HogSvmBaseline, MajorityBaseline
 from .config import load_config
 from .manifest import build_manifest, duplicate_audit, manifest_summary, validate_manifest
@@ -171,6 +172,21 @@ def command_make_pilot(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_auto_annotate(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    workspace = _workspace(args.workspace)
+    manifest = pd.read_csv(args.manifest, dtype=str, keep_default_na=False)
+    errors = validate_manifest(manifest)
+    if errors:
+        raise ValueError("Manifest validation failed: " + "; ".join(errors))
+    settings = config["auto_annotation"]
+    settings["source_manifest"] = str(Path(args.manifest))
+    output = Path(args.output) if args.output else workspace / settings["output"]
+    summary = build_provisional_release(manifest, workspace, output, settings)
+    print(json.dumps({"output": str(output.resolve()), **summary}, indent=2))
+    return 0
+
+
 def command_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     config["training"]["augmentation"] = bool(args.augmentation)
@@ -278,6 +294,12 @@ def build_parser() -> argparse.ArgumentParser:
     pilot.add_argument("--workspace")
     pilot.add_argument("--output")
     pilot.set_defaults(function=command_make_pilot)
+    auto = subparsers.add_parser("auto-annotate", help="Generate AI-provisional labels for every eligible CASIA C frame.")
+    auto.add_argument("manifest")
+    auto.add_argument("--config", default="configs/study.yaml")
+    auto.add_argument("--workspace")
+    auto.add_argument("--output")
+    auto.set_defaults(function=command_auto_annotate)
     train = subparsers.add_parser("train", help="Train a baseline or four-output neural model.")
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/study.yaml")

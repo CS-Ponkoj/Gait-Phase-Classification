@@ -1,0 +1,33 @@
+{
+  "annotation_version": "v0.1-ai",
+  "status": "AI_PROVISIONAL_NOT_PUBLICATION_GROUND_TRUTH",
+  "method": "lower-limb silhouette spread contact timing plus fixed operational phase thresholds",
+  "reference_limb": "not anatomically identified",
+  "phase_thresholds": [
+    0.12,
+    0.31,
+    0.62
+  ],
+  "labeled_frames": 100330,
+  "excluded_frames": 4587,
+  "accounted_manifest_frames": 104917,
+  "sequences": 1530,
+  "subjects": 153,
+  "confidence_counts": {
+    "low": 2317,
+    "medium": 98013
+  },
+  "phase_counts": {
+    "initial_contact_loading": 14732,
+    "mid_stance": 19974,
+    "swing": 33546,
+    "terminal_stance_preswing": 32078
+  },
+  "split_counts": {
+    "development": 79882,
+    "test": 20448
+  },
+  "source_manifest": "data/manifests/generated/casia_a_c_split.csv",
+  "source_manifest_sha256": "8391b8e354c0022073733375f4820a82338b648a8483aef862ddcc6d3a1eb4c7",
+  "complete_boundary_cycles": 5658
+}

@@ -16,7 +16,7 @@ Overall assessment: **Needs revision**
 - Test-set access acknowledgement and machine-generated paper evidence
 - Data statement, model card, experimental protocol, reproduction guide, and conference-paper outline
 - Real A+C audit covering 104,917 frames, 173 subjects, exact duplicates, perceptual candidates, and locked subject counts
-- Deterministic blinded pilot generation with 12 distinct development subjects, 755 frames, balanced condition-family coverage, frame-indexed previews, and separate annotator templates
+- Deterministic blinded pilot generation with 12 distinct CASIA C development subjects, continuous frames, balanced condition-family coverage, frame-indexed previews, and separate annotator templates
 
 ## Publication blockers
 
