@@ -49,3 +49,21 @@ auto_annotation:
     fs: 16
     fq: 12
     fb: 13
+
+prepared_data:
+  output: data/processed/provisional_v0.1-ai
+  labels: annotations/provisional/v0.1-ai/frame_labels.csv.gz
+  confidence: medium
+  folds: 5
+  copy_workers: 16
+  expected_counts:
+    development_frames: 78021
+    test_frames: 19992
+    withheld_low_confidence_frames: 2317
+    copied_files: 410097
+    folds:
+      0: {train_frames: 62196, validation_frames: 15825}
+      1: {train_frames: 61478, validation_frames: 16543}
+      2: {train_frames: 62509, validation_frames: 15512}
+      3: {train_frames: 63261, validation_frames: 14760}
+      4: {train_frames: 62640, validation_frames: 15381}

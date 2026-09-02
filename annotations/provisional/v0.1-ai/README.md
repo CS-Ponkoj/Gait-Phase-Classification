@@ -11,3 +11,5 @@ These files contain deterministic machine-generated labels, not human or clinica
 - `split_summary.csv`: frame, subject, and sequence counts by split, fold, and phase.
 - `provenance.json`: method, source checksum, and release totals.
 - `checksums.sha256`: integrity hashes for the release files.
+
+Create local physical train/validation/test folders with `gait-phase prepare-training-data data/manifests/generated/casia_a_c_split.csv`. The generated `data/processed/provisional_v0.1-ai/` tree is licensed-data-derived, local-only, and ignored by Git.

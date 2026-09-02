@@ -22,7 +22,7 @@ class MajorityBaseline:
     def fit(self, frame: pd.DataFrame) -> "MajorityBaseline":
         if frame.empty:
             raise ValueError("Cannot fit majority baseline on an empty table.")
-        self.label = str(frame["adjudicated_label"].value_counts().sort_index().idxmax())
+        self.label = str(frame["target_label"].value_counts().sort_index().idxmax())
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
@@ -43,9 +43,9 @@ class CyclePriorBaseline:
         if usable.empty:
             raise ValueError("Cycle-prior baseline requires cycle_position annotations.")
         usable["position_bin"] = np.minimum((positions[positions.notna()] * self.bins).astype(int), self.bins - 1)
-        self.fallback = str(usable["adjudicated_label"].value_counts().idxmax())
+        self.fallback = str(usable["target_label"].value_counts().idxmax())
         for position_bin, group in usable.groupby("position_bin"):
-            self.lookup[int(position_bin)] = str(group["adjudicated_label"].value_counts().idxmax())
+            self.lookup[int(position_bin)] = str(group["target_label"].value_counts().idxmax())
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
@@ -77,7 +77,7 @@ class HogSvmBaseline:
         return np.stack(rows)
 
     def fit(self, frame: pd.DataFrame) -> "HogSvmBaseline":
-        self.model.fit(self._features(frame), frame["adjudicated_label"].astype(str))
+        self.model.fit(self._features(frame), frame["target_label"].astype(str))
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:

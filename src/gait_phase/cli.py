@@ -16,11 +16,13 @@ from .annotations import annotation_agreement, boundary_disagreement, expand_bou
 from .auto_annotations import build_provisional_release
 from .baselines import CyclePriorBaseline, HogSvmBaseline, MajorityBaseline
 from .config import load_config
+from .hashing import sha256_file
 from .manifest import build_manifest, duplicate_audit, manifest_summary, validate_manifest
 from .metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
 from .models import build_frame_cnn, build_temporal_tcn
 from .paper_assets import make_paper_assets
 from .pilot import build_pilot_package
+from .prepared_data import prepare_training_data, validate_prepared_data
 from .splits import assert_split_integrity, make_subject_splits
 from .training import (
     create_run_directory,
@@ -187,15 +189,57 @@ def command_auto_annotate(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_train(args: argparse.Namespace) -> int:
+def command_prepare_training_data(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    config["training"]["augmentation"] = bool(args.augmentation)
-    set_determinism(int(config["study"]["seed"]))
     workspace = _workspace(args.workspace)
-    manifest = eligible_labeled(pd.read_csv(args.manifest, dtype=str, keep_default_na=False))
+    settings = config["prepared_data"].copy()
+    manifest_path = Path(args.manifest)
+    labels_path = Path(args.labels or settings["labels"])
+    if not manifest_path.is_absolute():
+        manifest_path = workspace / manifest_path
+    if not labels_path.is_absolute():
+        labels_path = workspace / labels_path
+    manifest = pd.read_csv(manifest_path, dtype=str, keep_default_na=False)
     errors = validate_manifest(manifest)
     if errors:
         raise ValueError("Manifest validation failed: " + "; ".join(errors))
+    labels = pd.read_csv(labels_path, dtype=str, keep_default_na=False)
+    settings["source_manifest_sha256"] = sha256_file(manifest_path)
+    settings["source_labels_sha256"] = sha256_file(labels_path)
+    output = Path(args.output) if args.output else workspace / settings["output"]
+    summary = prepare_training_data(manifest, labels, workspace, output, settings)
+    print(json.dumps({"output": str(output.resolve()), **summary}, indent=2))
+    return 0
+
+
+def command_validate_prepared_data(args: argparse.Namespace) -> int:
+    workspace = _workspace(args.workspace)
+    root = Path(args.root)
+    if not root.is_absolute():
+        root = workspace / root
+    report = validate_prepared_data(root, workspace, verify_image_hashes=not args.skip_image_hashes)
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def command_train(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    config["training"]["augmentation"] = bool(args.augmentation)
+    config["training_run"] = {
+        "label_source": args.label_source,
+        "provisional_labels_allowed": bool(args.allow_provisional),
+        "confidence_policy": "medium" if args.label_source == "provisional" else "adjudicated",
+        "fold": int(args.fold),
+        "evaluation_split": args.evaluation_split,
+        "test_accessed": args.evaluation_split == "test",
+    }
+    set_determinism(int(config["study"]["seed"]))
+    workspace = _workspace(args.workspace)
+    source_manifest = pd.read_csv(args.manifest, dtype=str, keep_default_na=False)
+    errors = validate_manifest(source_manifest)
+    if errors:
+        raise ValueError("Manifest validation failed: " + "; ".join(errors))
+    manifest = eligible_labeled(source_manifest, args.label_source, args.allow_provisional)
     if args.evaluation_split == "test":
         if not args.allow_test:
             raise ValueError("Test evaluation requires the explicit --allow-test flag after configuration freeze.")
@@ -300,6 +344,23 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--workspace")
     auto.add_argument("--output")
     auto.set_defaults(function=command_auto_annotate)
+    prepare = subparsers.add_parser(
+        "prepare-training-data",
+        help="Copy medium-confidence provisional data into five training/validation folds and a shared test tree.",
+    )
+    prepare.add_argument("manifest")
+    prepare.add_argument("--labels")
+    prepare.add_argument("--config", default="configs/study.yaml")
+    prepare.add_argument("--workspace")
+    prepare.add_argument("--output")
+    prepare.set_defaults(function=command_prepare_training_data)
+    prepared_validate = subparsers.add_parser(
+        "validate-prepared-data", help="Revalidate copied fold manifests, leakage rules, counts, and checksums."
+    )
+    prepared_validate.add_argument("root")
+    prepared_validate.add_argument("--workspace")
+    prepared_validate.add_argument("--skip-image-hashes", action="store_true")
+    prepared_validate.set_defaults(function=command_validate_prepared_data)
     train = subparsers.add_parser("train", help="Train a baseline or four-output neural model.")
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/study.yaml")
@@ -308,6 +369,8 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--fold", type=int, choices=range(5), default=0)
     train.add_argument("--evaluation-split", choices=["validation", "test"], default="validation")
     train.add_argument("--allow-test", action="store_true")
+    train.add_argument("--label-source", choices=["adjudicated", "provisional"], default="adjudicated")
+    train.add_argument("--allow-provisional", action="store_true")
     train.add_argument("--pretrained", action="store_true")
     train.add_argument("--augmentation", action=argparse.BooleanOptionalAction, default=True)
     train.add_argument("--training-dataset", choices=["pooled", "casia_a_curated", "casia_c"], default="pooled")
@@ -331,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.function(args))
-    except (FileNotFoundError, ValueError, KeyError, zipfile.BadZipFile) as error:
+    except (FileNotFoundError, FileExistsError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 

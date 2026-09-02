@@ -14,6 +14,7 @@ The historical project is preserved unchanged under `legacy/`. A new publication
 - Existing accuracy claims must not be reused; new subject-independent results must be generated from adjudicated labels.
 - Five Dataset A duplicate groups contain identical image content under conflicting labels and require review.
 - A deterministic blinded 12-sequence CASIA C annotation pilot generator is available. It rejects frame-incomplete sequences and balances normal, slow, fast, and bag-carrying conditions.
+- The AI-provisional release can be copied into five physical train/validation fold trees and one shared frozen-test tree with `gait-phase prepare-training-data`. Provisional experiments require `--label-source provisional --allow-provisional`; test evaluation additionally requires `--allow-test`.
 
 See [`inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md`](inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md) for the evidence-backed preservation and data-lineage review.
 

@@ -40,6 +40,33 @@ The local package is written to `annotations/pilot/pilot_v3/` and is ignored by 
 
 ## Training and evaluation
 
+Prepare the medium-confidence AI-provisional data as copied, fold-aware local trees:
+
+```powershell
+gait-phase prepare-training-data data/manifests/generated/casia_a_c_split.csv
+```
+
+The command writes `data/processed/provisional_v0.1-ai/`, verifies every source and copied-image checksum, excludes low-confidence rows, and creates `READY.json` only after all five fold manifests pass. The processed tree is ignored by Git because it contains licensed image copies.
+
+Revalidate the completed tree at any time with:
+
+```powershell
+gait-phase validate-prepared-data data/processed/provisional_v0.1-ai
+```
+
+Run a provisional development-fold experiment explicitly:
+
+```powershell
+gait-phase train `
+  --manifest data/processed/provisional_v0.1-ai/folds/fold_0/manifest.csv.gz `
+  --fold 0 `
+  --model majority `
+  --label-source provisional `
+  --allow-provisional
+```
+
+Frozen-test evaluation additionally requires `--evaluation-split test --allow-test`. Never use the test result to revise preprocessing, labels, model selection, or hyperparameters.
+
 Run development folds first:
 
 ```powershell
