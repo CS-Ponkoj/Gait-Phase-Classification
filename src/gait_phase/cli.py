@@ -225,7 +225,33 @@ def command_validate_prepared_data(args: argparse.Namespace) -> int:
 def command_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     config["training"]["augmentation"] = bool(args.augmentation)
+    training_overrides = {
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "early_stopping_patience": args.patience,
+        "temporal_window": args.temporal_window,
+        "num_workers": args.num_workers,
+        "device": args.device,
+        "progress_every_batches": args.progress_every,
+    }
+    for name, value in training_overrides.items():
+        if value is not None:
+            config["training"][name] = value
+    training_settings = config["training"]
+    for name in ("epochs", "batch_size", "early_stopping_patience"):
+        if int(training_settings[name]) < 1:
+            raise ValueError(f"Training setting {name} must be at least 1.")
+    if float(training_settings["learning_rate"]) <= 0:
+        raise ValueError("Training setting learning_rate must be positive.")
+    if int(training_settings.get("num_workers", 0)) < 0:
+        raise ValueError("Training setting num_workers cannot be negative.")
+    temporal_window = int(training_settings["temporal_window"])
+    if temporal_window < 3 or temporal_window % 2 == 0:
+        raise ValueError("Training setting temporal_window must be an odd integer of at least 3.")
     config["training_run"] = {
+        "model": args.model,
+        "pretrained": bool(args.pretrained),
         "label_source": args.label_source,
         "provisional_labels_allowed": bool(args.allow_provisional),
         "confidence_policy": "medium" if args.label_source == "provisional" else "adjudicated",
@@ -373,6 +399,14 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--allow-provisional", action="store_true")
     train.add_argument("--pretrained", action="store_true")
     train.add_argument("--augmentation", action=argparse.BooleanOptionalAction, default=True)
+    train.add_argument("--epochs", type=int)
+    train.add_argument("--batch-size", type=int)
+    train.add_argument("--learning-rate", type=float)
+    train.add_argument("--patience", type=int)
+    train.add_argument("--temporal-window", type=int)
+    train.add_argument("--num-workers", type=int)
+    train.add_argument("--device", choices=["auto", "cpu", "cuda"])
+    train.add_argument("--progress-every", type=int)
     train.add_argument("--training-dataset", choices=["pooled", "casia_a_curated", "casia_c"], default="pooled")
     train.add_argument("--evaluation-dataset", choices=["match", "pooled", "casia_a_curated", "casia_c"], default="match")
     train.set_defaults(function=command_train)

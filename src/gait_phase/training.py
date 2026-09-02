@@ -7,6 +7,7 @@ import json
 import platform
 import random
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,15 @@ from PIL import Image, ImageOps
 
 from .constants import PHASES, PHASE_TO_INDEX
 from .metrics import compute_metrics
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours:d}h {minutes:02d}m {seconds:02d}s"
+    return f"{minutes:d}m {seconds:02d}s"
 
 
 def set_determinism(seed: int) -> None:
@@ -212,9 +222,36 @@ def train_torch_model(
     train_dataset = dataset_class(train_frame, workspace, image_size, augment=bool(settings.get("augmentation", True)), **dataset_kwargs)
     validation_dataset = dataset_class(validation_frame, workspace, image_size, augment=False, **dataset_kwargs)
     generator = torch.Generator().manual_seed(seed)
-    train_loader = DataLoader(train_dataset, batch_size=int(settings["batch_size"]), shuffle=True, generator=generator)
-    validation_loader = DataLoader(validation_dataset, batch_size=int(settings["batch_size"]), shuffle=False)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    workers = int(settings.get("num_workers", 0))
+    requested_device = str(settings.get("device", "auto"))
+    if requested_device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested, but PyTorch cannot access a CUDA GPU.")
+    if torch.cuda.is_available():
+        capability = torch.cuda.get_device_capability(0)
+        required_architecture = f"sm_{capability[0]}{capability[1]}"
+        supported_architectures = set(torch.cuda.get_arch_list())
+        if required_architecture not in supported_architectures:
+            raise RuntimeError(
+                f"The installed PyTorch build does not support this GPU ({required_architecture}). "
+                "Run scripts\\setup-gpu.ps1, then retry training."
+            )
+    resolved_device = "cuda" if requested_device == "auto" and torch.cuda.is_available() else requested_device
+    if resolved_device == "auto":
+        resolved_device = "cpu"
+    device = torch.device(resolved_device)
+    loader_options = {
+        "batch_size": int(settings["batch_size"]),
+        "num_workers": workers,
+        "pin_memory": device.type == "cuda",
+        "persistent_workers": workers > 0,
+    }
+    train_loader = DataLoader(train_dataset, shuffle=True, generator=generator, **loader_options)
+    validation_loader = DataLoader(validation_dataset, shuffle=False, **loader_options)
+    config["training_run"]["resolved_device"] = str(device)
+    config["training_run"]["cuda_device_name"] = (
+        torch.cuda.get_device_name(0) if device.type == "cuda" else None
+    )
+    progress_every = max(1, int(settings.get("progress_every_batches", 100)))
     model.to(device)
     counts = train_frame["target_label"].value_counts()
     weights = torch.tensor([len(train_frame) / (len(PHASES) * counts.get(label, 1)) for label in PHASES], dtype=torch.float32, device=device)
@@ -223,24 +260,71 @@ def train_torch_model(
     best_loss, patience = float("inf"), 0
     history: list[dict[str, float]] = []
     checkpoint = run_dir / "model.pt"
+    print(
+        f"device={device} train_samples={len(train_dataset)} "
+        f"validation_samples={len(validation_dataset)} train_batches={len(train_loader)} "
+        f"validation_batches={len(validation_loader)}",
+        flush=True,
+    )
     for epoch in range(int(settings["epochs"])):
         model.train()
         train_losses = []
-        for inputs, targets, _ in train_loader:
+        epoch_started = time.monotonic()
+        for batch_number, (inputs, targets, _) in enumerate(train_loader, start=1):
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad(set_to_none=True)
             loss = loss_function(model(inputs), targets)
             loss.backward()
             optimizer.step()
             train_losses.append(float(loss.detach().cpu()))
+            if batch_number == 1 or batch_number % progress_every == 0 or batch_number == len(train_loader):
+                elapsed = time.monotonic() - epoch_started
+                batches_per_second = batch_number / max(elapsed, 1e-9)
+                remaining = (len(train_loader) - batch_number) / max(batches_per_second, 1e-9)
+                gpu_memory = ""
+                if device.type == "cuda":
+                    allocated = torch.cuda.memory_allocated(device) / (1024**3)
+                    reserved = torch.cuda.memory_reserved(device) / (1024**3)
+                    gpu_memory = f" gpu={allocated:.2f}/{reserved:.2f}GB"
+                print(
+                    f"[train] epoch={epoch + 1}/{int(settings['epochs'])} "
+                    f"batch={batch_number}/{len(train_loader)} "
+                    f"({100 * batch_number / len(train_loader):.1f}%) "
+                    f"loss={np.mean(train_losses):.6f} elapsed={_format_duration(elapsed)} "
+                    f"eta={_format_duration(remaining)}{gpu_memory}",
+                    flush=True,
+                )
         model.eval()
         validation_losses = []
+        validation_started = time.monotonic()
         with torch.no_grad():
-            for inputs, targets, _ in validation_loader:
+            for batch_number, (inputs, targets, _) in enumerate(validation_loader, start=1):
                 inputs, targets = inputs.to(device), targets.to(device)
                 validation_losses.append(float(loss_function(model(inputs), targets).cpu()))
+                if (
+                    batch_number == 1
+                    or batch_number % progress_every == 0
+                    or batch_number == len(validation_loader)
+                ):
+                    elapsed = time.monotonic() - validation_started
+                    batches_per_second = batch_number / max(elapsed, 1e-9)
+                    remaining = (len(validation_loader) - batch_number) / max(batches_per_second, 1e-9)
+                    print(
+                        f"[validation] epoch={epoch + 1}/{int(settings['epochs'])} "
+                        f"batch={batch_number}/{len(validation_loader)} "
+                        f"({100 * batch_number / len(validation_loader):.1f}%) "
+                        f"loss={np.mean(validation_losses):.6f} elapsed={_format_duration(elapsed)} "
+                        f"eta={_format_duration(remaining)}",
+                        flush=True,
+                    )
         validation_loss = float(np.mean(validation_losses))
-        history.append({"epoch": epoch + 1, "train_loss": float(np.mean(train_losses)), "validation_loss": validation_loss})
+        train_loss = float(np.mean(train_losses))
+        history.append({"epoch": epoch + 1, "train_loss": train_loss, "validation_loss": validation_loss})
+        print(
+            f"epoch={epoch + 1}/{int(settings['epochs'])} "
+            f"train_loss={train_loss:.6f} validation_loss={validation_loss:.6f}",
+            flush=True,
+        )
         if validation_loss < best_loss - 1e-6:
             best_loss, patience = validation_loss, 0
             torch.save(model.state_dict(), checkpoint)

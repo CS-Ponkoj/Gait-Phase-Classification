@@ -84,6 +84,14 @@ gait-phase validate-data data/manifests/generated/casia_a_c_manifest.csv
 gait-phase make-splits data/manifests/generated/casia_a_c_manifest.csv --output data/manifests/generated/casia_a_c_split.csv
 ```
 
+Train the temporal model on one development fold without opening the frozen test set:
+
+```powershell
+.\scripts\train-provisional.ps1 -Model tcn -Folds 0 -Device auto
+```
+
+After fold 0 completes successfully, use `-Folds 0,1,2,3,4` for the full five-fold experiment. Training outputs remain local under `artifacts/runs/`.
+
 See [`docs/reproducibility.md`](docs/reproducibility.md), [`docs/experimental_protocol.md`](docs/experimental_protocol.md), [`docs/DATA_STATEMENT.md`](docs/DATA_STATEMENT.md), and [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
 
 The current real-corpus gate results are recorded in [`docs/DATA_AUDIT_2026-08-27.md`](docs/DATA_AUDIT_2026-08-27.md).

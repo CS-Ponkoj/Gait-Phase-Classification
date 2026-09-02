@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import yaml
 from PIL import Image
 
 from gait_phase.cli import main
@@ -158,6 +159,50 @@ def test_provisional_training_requires_both_safety_flags(tmp_path):
     assert main(base) == 2
     assert main([*base, "--allow-provisional"]) == 0
     assert main([*base, "--allow-provisional", "--evaluation-split", "test"]) == 2
+
+
+def test_training_overrides_are_recorded_in_run_config(tmp_path):
+    manifest, labels = prepared_fixture(tmp_path)
+    output = tmp_path / "data" / "processed" / "prepared"
+    prepare_training_data(manifest, labels, tmp_path, output, settings())
+    result = main(
+        [
+            "train",
+            "--manifest",
+            str(output / "folds" / "fold_0" / "manifest.csv.gz"),
+            "--workspace",
+            str(tmp_path),
+            "--model",
+            "majority",
+            "--fold",
+            "0",
+            "--label-source",
+            "provisional",
+            "--allow-provisional",
+            "--epochs",
+            "3",
+            "--batch-size",
+            "7",
+            "--learning-rate",
+            "0.005",
+            "--patience",
+            "2",
+            "--num-workers",
+            "0",
+            "--device",
+            "cpu",
+            "--progress-every",
+            "25",
+        ]
+    )
+    assert result == 0
+    run_directory = next((tmp_path / "artifacts" / "runs").iterdir())
+    run_config = yaml.safe_load((run_directory / "config.yaml").read_text(encoding="utf-8"))
+    assert run_config["training"]["epochs"] == 3
+    assert run_config["training"]["batch_size"] == 7
+    assert run_config["training"]["learning_rate"] == 0.005
+    assert run_config["training"]["progress_every_batches"] == 25
+    assert run_config["training_run"]["model"] == "majority"
 
 
 def test_temporal_dataset_orders_frames_numerically_and_splits_gaps(tmp_path):

@@ -12,6 +12,14 @@ python -m venv .venv
 
 GPU users may replace the pinned CPU-compatible PyTorch installation with the matching official CUDA wheel, but must retain the resulting environment record in each run.
 
+For this workstation's NVIDIA RTX 5060, create and verify the CUDA environment with:
+
+```powershell
+.\scripts\setup-gpu.ps1
+```
+
+This installs the project into `.venv`, installs the pinned CUDA 13.0 PyTorch build, verifies `sm_120` support, and runs an actual tensor operation on the GPU. The older PyTorch 2.5.1 CUDA 12.1 build is incompatible with this GPU.
+
 ## Data preparation
 
 Licensed data is never downloaded or published automatically.
@@ -47,6 +55,32 @@ gait-phase prepare-training-data data/manifests/generated/casia_a_c_split.csv
 ```
 
 The command writes `data/processed/provisional_v0.1-ai/`, verifies every source and copied-image checksum, excludes low-confidence rows, and creates `READY.json` only after all five fold manifests pass. The processed tree is ignored by Git because it contains licensed image copies.
+
+### Recommended local training launcher
+
+First activate the Python 3.11 environment created above. Then train fold 0 as a hardware and runtime check:
+
+```powershell
+.\scripts\train-provisional.ps1 `
+  -Model tcn `
+  -Folds 0 `
+  -Epochs 30 `
+  -Device auto
+```
+
+The launcher defaults to batch size 4 for the temporal model and 32 for the single-frame CNN. If GPU memory is exhausted, retry the temporal model with `-BatchSize 2`. `-Device auto` uses CUDA when PyTorch can access it and otherwise uses the CPU. Pretrained EfficientNet weights are enabled by default and may be downloaded on the first run.
+
+Once fold 0 completes, run the locked five-fold development experiment:
+
+```powershell
+.\scripts\train-provisional.ps1 `
+  -Model tcn `
+  -Folds 0,1,2,3,4 `
+  -Epochs 30 `
+  -Device auto
+```
+
+The launcher never passes `--allow-test`; it cannot evaluate the frozen test set. Each fold writes a separate checkpoint, learning curve, predictions, metrics, configuration, and environment record under `artifacts/runs/`. Use `-Model cnn` for the single-frame comparison and `-Model hog_svm` for the classical baseline.
 
 Revalidate the completed tree at any time with:
 

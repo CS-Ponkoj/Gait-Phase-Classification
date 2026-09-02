@@ -26,6 +26,9 @@ training:
   temporal_window: 9
   class_weighting: balanced
   augmentation: true
+  num_workers: 0
+  device: auto
+  progress_every_batches: 100
 
 evaluation:
   primary_metric: subject_macro_f1

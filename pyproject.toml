@@ -19,8 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = [
-  "torch==2.5.1",
-  "torchvision==0.20.1",
+  "torch==2.13.0",
+  "torchvision==0.28.0",
 ]
 dev = [
   "pytest==9.0.2",
