@@ -9,7 +9,7 @@ from gait_phase.cli import main
 from gait_phase.constants import MANIFEST_COLUMNS, PHASES
 from gait_phase.hashing import sha256_file
 from gait_phase.prepared_data import prepare_training_data, validate_prepared_data
-from gait_phase.training import TemporalDataset
+from gait_phase.training import DenseTemporalDataset, TemporalDataset, prepare_aligned_silhouette
 
 
 def prepared_fixture(workspace: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -223,3 +223,79 @@ def test_temporal_dataset_orders_frames_numerically_and_splits_gaps(tmp_path):
     dataset = TemporalDataset(pd.DataFrame(rows), tmp_path, (8, 8), window=3)
     assert dataset.frame["numeric_frame_index"].tolist() == [1, 2, 10, 11]
     assert sorted(len(indices) for indices in dataset.segment_indices.values()) == [2, 2]
+
+
+def test_aligned_silhouette_preserves_shape_and_bottom_alignment():
+    image = Image.new("L", (80, 60), 0)
+    for x in range(30, 50):
+        for y in range(10, 50):
+            image.putpixel((x, y), 255)
+    aligned = prepare_aligned_silhouette(image, (44, 64), margin=4)
+    assert aligned.size == (44, 64)
+    assert aligned.getbbox() is not None
+    assert aligned.getbbox()[3] == 60
+    assert aligned.getbbox()[2] - aligned.getbbox()[0] < aligned.getbbox()[3] - aligned.getbbox()[1]
+
+
+def test_temporal_repeated_control_uses_only_center_frame(tmp_path):
+    rows = []
+    for frame_index in range(5):
+        relative = Path("images") / f"control-{frame_index}.png"
+        path = tmp_path / relative
+        path.parent.mkdir(exist_ok=True)
+        Image.new("L", (16, 16), 20 * frame_index).save(path)
+        rows.append(
+            {
+                "sequence_id": "sequence-control",
+                "frame_index": str(frame_index),
+                "relative_path": relative.as_posix(),
+                "target_label": PHASES[frame_index % len(PHASES)],
+            }
+        )
+    dataset = TemporalDataset(
+        pd.DataFrame(rows),
+        tmp_path,
+        (16, 16),
+        window=5,
+        temporal_control="repeated",
+    )
+    images, _, _ = dataset[2]
+    assert all(images[position].equal(images[0]) for position in range(1, 5))
+
+
+def test_dense_temporal_dataset_covers_every_frame_and_marks_boundaries(tmp_path):
+    rows = []
+    for frame_index in range(7):
+        relative = Path("images") / f"dense-{frame_index}.png"
+        path = tmp_path / relative
+        path.parent.mkdir(exist_ok=True)
+        image = Image.new("L", (32, 32), 0)
+        for x in range(12, 20):
+            for y in range(4, 28):
+                image.putpixel((x, y), 255)
+        image.save(path)
+        rows.append(
+            {
+                "sequence_id": "sequence-dense",
+                "frame_index": str(frame_index),
+                "relative_path": relative.as_posix(),
+                "target_label": PHASES[0] if frame_index < 3 else PHASES[1],
+            }
+        )
+    dataset = DenseTemporalDataset(
+        pd.DataFrame(rows),
+        tmp_path,
+        (24, 32),
+        window=5,
+        stride=3,
+    )
+    covered = set()
+    observed_boundaries = 0
+    for clip_index in range(len(dataset)):
+        images, targets, boundaries, mask, indices = dataset[clip_index]
+        assert images.shape == (5, 1, 32, 24)
+        assert targets.shape == boundaries.shape == mask.shape == indices.shape == (5,)
+        covered.update(indices[mask].tolist())
+        observed_boundaries += int(boundaries[mask].sum())
+    assert covered == set(range(7))
+    assert observed_boundaries >= 1

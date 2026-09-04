@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("cnn", "tcn", "hog_svm", "majority", "cycle_prior")]
+    [ValidateSet("cnn", "tcn", "tgpn", "hog_svm", "majority", "cycle_prior")]
     [string]$Model = "tcn",
 
     [ValidateRange(0, 4)]
@@ -18,14 +18,17 @@ param(
     [ValidateSet("auto", "cpu", "cuda")]
     [string]$Device = "auto",
 
-    [ValidateRange(0.0000001, 1.0)]
-    [double]$LearningRate = 0.001,
+    [ValidateRange(0.0, 1.0)]
+    [double]$LearningRate = 0.0,
 
     [ValidateRange(1, 100)]
     [int]$Patience = 5,
 
-    [ValidateRange(3, 99)]
-    [int]$TemporalWindow = 9,
+    [ValidateRange(0, 99)]
+    [int]$TemporalWindow = 0,
+
+    [ValidateSet("ordered", "repeated", "shuffled")]
+    [string]$TemporalControl = "ordered",
 
     [ValidateRange(1, 10000)]
     [int]$ProgressEvery = 100,
@@ -50,7 +53,16 @@ if ($ready.status -ne "READY") {
 }
 
 if ($BatchSize -eq 0) {
-    $BatchSize = if ($Model -eq "tcn") { 4 } else { 32 }
+    $BatchSize = if ($Model -eq "tgpn") { 2 } elseif ($Model -eq "tcn") { 4 } else { 32 }
+}
+if ($LearningRate -eq 0.0) {
+    $LearningRate = if ($Model -eq "tgpn") { 0.0003 } else { 0.001 }
+}
+if ($TemporalWindow -eq 0) {
+    $TemporalWindow = if ($Model -eq "tgpn") { 27 } else { 9 }
+}
+if ($TemporalWindow -lt 3 -or $TemporalWindow % 2 -eq 0) {
+    throw "TemporalWindow must be an odd integer of at least 3."
 }
 
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
@@ -86,11 +98,12 @@ try {
             "--learning-rate", $LearningRate,
             "--patience", $Patience,
             "--temporal-window", $TemporalWindow,
+            "--temporal-control", $TemporalControl,
             "--num-workers", $Workers,
             "--device", $Device,
             "--progress-every", $ProgressEvery
         )
-        if (-not $NoPretrained -and $Model -in @("cnn", "tcn")) {
+        if (-not $NoPretrained -and $Model -in @("cnn", "tcn", "tgpn")) {
             $arguments += "--pretrained"
         }
         if ($NoAugmentation) {

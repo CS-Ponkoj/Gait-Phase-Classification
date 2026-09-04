@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from gait_phase.metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
+from gait_phase.metrics import boundary_metrics, compute_metrics, subject_bootstrap_interval, subject_macro_f1
 
 
 def predictions():
@@ -46,3 +46,13 @@ def test_unknown_phase_fails():
     frame.loc[0, "y_pred"] = "unknown"
     with pytest.raises(ValueError, match="Unknown phase"):
         compute_metrics(frame)
+
+
+def test_boundary_metrics_report_exact_timing():
+    frame = predictions()
+    frame["y_boundary"] = [0, 1, 0, 0] * 2
+    frame["boundary_probability"] = [0.1, 0.9, 0.2, 0.1] * 2
+    result = boundary_metrics(frame)
+    assert result["f1"] == 1.0
+    assert result["median_absolute_error_frames"] == 0.0
+    assert result["within_one_frame"] == 1.0

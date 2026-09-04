@@ -69,3 +69,38 @@ def test_majority_run_and_paper_assets_are_reproducible(tmp_path):
     assert (output / "metrics.json").is_file()
     assert (output / "confusion_matrix.png").is_file()
     assert (output / "results_summary.md").is_file()
+
+
+def test_tgpn_one_epoch_smoke_run_produces_dense_predictions(tmp_path):
+    manifest = create_frozen_fixture(tmp_path)
+    assert main(
+        [
+            "train",
+            "--manifest",
+            str(manifest),
+            "--workspace",
+            str(tmp_path),
+            "--model",
+            "tgpn",
+            "--fold",
+            "0",
+            "--epochs",
+            "1",
+            "--batch-size",
+            "2",
+            "--temporal-window",
+            "9",
+            "--learning-rate",
+            "0.0003",
+            "--patience",
+            "1",
+            "--device",
+            "cpu",
+            "--no-augmentation",
+        ]
+    ) == 0
+    run_directory = next((tmp_path / "artifacts" / "runs").glob("*-tgpn-*"))
+    predictions = pd.read_csv(run_directory / "predictions.csv")
+    assert len(predictions) == 2 * len(PHASES)
+    assert {"boundary_probability", "y_boundary"}.issubset(predictions.columns)
+    assert (run_directory / "model.pt").is_file()

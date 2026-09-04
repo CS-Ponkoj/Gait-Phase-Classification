@@ -19,7 +19,7 @@ from .config import load_config
 from .hashing import sha256_file
 from .manifest import build_manifest, duplicate_audit, manifest_summary, validate_manifest
 from .metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
-from .models import build_frame_cnn, build_temporal_tcn
+from .models import build_frame_cnn, build_temporal_tcn, build_thermal_gait_phasenet
 from .paper_assets import make_paper_assets
 from .pilot import build_pilot_package
 from .prepared_data import prepare_training_data, validate_prepared_data
@@ -30,6 +30,7 @@ from .training import (
     prediction_table,
     save_run_records,
     set_determinism,
+    train_thermal_gait_phasenet,
     train_torch_model,
 )
 
@@ -224,7 +225,13 @@ def command_validate_prepared_data(args: argparse.Namespace) -> int:
 
 def command_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
+    if args.model != "tcn" and args.temporal_control != "ordered":
+        raise ValueError("Temporal controls repeated/shuffled are supported only by the center-frame TCN.")
     config["training"]["augmentation"] = bool(args.augmentation)
+    if args.model == "tgpn" and args.temporal_window is None:
+        config["training"]["temporal_window"] = int(
+            config["training"]["thermal_gait_phasenet"]["default_window"]
+        )
     training_overrides = {
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -239,6 +246,7 @@ def command_train(args: argparse.Namespace) -> int:
         if value is not None:
             config["training"][name] = value
     training_settings = config["training"]
+    training_settings["temporal_control"] = args.temporal_control
     for name in ("epochs", "batch_size", "early_stopping_patience"):
         if int(training_settings[name]) < 1:
             raise ValueError(f"Training setting {name} must be at least 1.")
@@ -258,6 +266,7 @@ def command_train(args: argparse.Namespace) -> int:
         "fold": int(args.fold),
         "evaluation_split": args.evaluation_split,
         "test_accessed": args.evaluation_split == "test",
+        "temporal_control": args.temporal_control,
     }
     set_determinism(int(config["study"]["seed"]))
     workspace = _workspace(args.workspace)
@@ -302,9 +311,28 @@ def command_train(args: argparse.Namespace) -> int:
     elif args.model == "cnn":
         model = build_frame_cnn(pretrained=args.pretrained)
         predictions = train_torch_model(model, train_frame, validation_frame, workspace, run_dir, config)
-    else:
+    elif args.model == "tcn":
         model = build_temporal_tcn(pretrained=args.pretrained)
         predictions = train_torch_model(model, train_frame, validation_frame, workspace, run_dir, config, temporal=True)
+    elif args.model == "tgpn":
+        settings = config["training"]["thermal_gait_phasenet"]
+        model = build_thermal_gait_phasenet(
+            pretrained=args.pretrained,
+            feature_dim=int(settings["feature_dim"]),
+            dilations=tuple(int(value) for value in settings["dilations"]),
+            attention_heads=int(settings["attention_heads"]),
+            max_window=int(settings["max_window"]),
+        )
+        predictions = train_thermal_gait_phasenet(
+            model,
+            train_frame,
+            validation_frame,
+            workspace,
+            run_dir,
+            config,
+        )
+    else:
+        raise ValueError(f"Unsupported model: {args.model}")
     save_run_records(run_dir, config, predictions)
     print(json.dumps({"run_directory": str(run_dir), "metrics": compute_metrics(predictions)}, indent=2))
     return 0
@@ -391,7 +419,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/study.yaml")
     train.add_argument("--workspace")
-    train.add_argument("--model", choices=["majority", "cycle_prior", "hog_svm", "cnn", "tcn"], required=True)
+    train.add_argument(
+        "--model",
+        choices=["majority", "cycle_prior", "hog_svm", "cnn", "tcn", "tgpn"],
+        required=True,
+    )
     train.add_argument("--fold", type=int, choices=range(5), default=0)
     train.add_argument("--evaluation-split", choices=["validation", "test"], default="validation")
     train.add_argument("--allow-test", action="store_true")
@@ -404,6 +436,12 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--learning-rate", type=float)
     train.add_argument("--patience", type=int)
     train.add_argument("--temporal-window", type=int)
+    train.add_argument(
+        "--temporal-control",
+        choices=["ordered", "repeated", "shuffled"],
+        default="ordered",
+        help="Temporal evidence control for the center-frame TCN; use ordered for normal training.",
+    )
     train.add_argument("--num-workers", type=int)
     train.add_argument("--device", choices=["auto", "cpu", "cuda"])
     train.add_argument("--progress-every", type=int)

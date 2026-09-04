@@ -90,6 +90,18 @@ Train the temporal model on one development fold without opening the frozen test
 .\scripts\train-provisional.ps1 -Model tcn -Folds 0 -Device auto
 ```
 
+Train the proposed boundary-aware Thermal GaitPhaseNet on a one-epoch smoke run:
+
+```powershell
+.\scripts\train-provisional.ps1 -Model tgpn -Folds 0 -Epochs 1 -BatchSize 2 -Workers 4 -Device cuda
+```
+
+The proposed model uses an aligned single-channel silhouette, whole-body and
+lower-body features, adjacent-frame motion, residual dilated temporal
+convolutions, lightweight attention, and dense per-frame phase and boundary
+outputs. See [`docs/THERMAL_GAITPHASENET.md`](docs/THERMAL_GAITPHASENET.md) for
+the required run order, temporal controls, and full five-fold command.
+
 After fold 0 completes successfully, use `-Folds 0,1,2,3,4` for the full five-fold experiment. Training outputs remain local under `artifacts/runs/`.
 
 See [`docs/reproducibility.md`](docs/reproducibility.md), [`docs/experimental_protocol.md`](docs/experimental_protocol.md), [`docs/DATA_STATEMENT.md`](docs/DATA_STATEMENT.md), and [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).

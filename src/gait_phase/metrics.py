@@ -32,6 +32,54 @@ def transition_validity(frame: pd.DataFrame) -> float:
     return float(np.mean(outcomes)) if outcomes else float("nan")
 
 
+def boundary_metrics(frame: pd.DataFrame, threshold: float = 0.5) -> dict[str, object]:
+    """Measure boundary classification and nearest-boundary timing error."""
+    required = {"sequence_id", "frame_index", "y_boundary", "boundary_probability"}
+    if missing := required - set(frame.columns):
+        raise ValueError(f"Missing boundary columns: {sorted(missing)}")
+    truth = pd.to_numeric(frame["y_boundary"], errors="raise").to_numpy(dtype=int)
+    probabilities = pd.to_numeric(frame["boundary_probability"], errors="raise").to_numpy(dtype=float)
+    predicted = (probabilities >= threshold).astype(int)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        truth,
+        predicted,
+        labels=[1],
+        average="binary",
+        zero_division=0,
+    )
+    errors: list[float] = []
+    working = frame.copy()
+    working["_frame"] = pd.to_numeric(working["frame_index"], errors="raise")
+    working["_probability"] = probabilities
+    working["_predicted"] = predicted
+    working["_truth"] = truth
+    for _, sequence in working.groupby("sequence_id", sort=False):
+        sequence = sequence.sort_values("_frame").reset_index(drop=True)
+        true_frames = sequence.loc[sequence["_truth"].eq(1), "_frame"].to_numpy(dtype=float)
+        predicted_rows = sequence[sequence["_predicted"].eq(1)].copy()
+        predicted_frames: list[float] = []
+        if not predicted_rows.empty:
+            predicted_rows["_group"] = predicted_rows["_frame"].diff().fillna(2).ne(1).cumsum()
+            for _, group in predicted_rows.groupby("_group"):
+                best = group.loc[group["_probability"].idxmax()]
+                predicted_frames.append(float(best["_frame"]))
+        if predicted_frames:
+            errors.extend(float(np.min(np.abs(np.asarray(predicted_frames) - true_frame))) for true_frame in true_frames)
+    return {
+        "threshold": float(threshold),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "true_boundaries": int(truth.sum()),
+        "predicted_boundary_frames": int(predicted.sum()),
+        "matched_true_boundaries": int(len(errors)),
+        "mean_absolute_error_frames": float(np.mean(errors)) if errors else None,
+        "median_absolute_error_frames": float(np.median(errors)) if errors else None,
+        "within_one_frame": float(np.mean(np.asarray(errors) <= 1)) if errors else None,
+        "within_two_frames": float(np.mean(np.asarray(errors) <= 2)) if errors else None,
+    }
+
+
 def compute_metrics(frame: pd.DataFrame) -> dict[str, object]:
     required = {"subject_id", "y_true", "y_pred"}
     if missing := required - set(frame.columns):
@@ -67,6 +115,27 @@ def compute_metrics(frame: pd.DataFrame) -> dict[str, object]:
     }
     if {"sequence_id", "frame_index"}.issubset(frame.columns):
         result["transition_validity"] = transition_validity(frame)
+    if {"condition", "subject_id"}.issubset(frame.columns):
+        condition_results = {}
+        for condition, group in frame.groupby("condition", sort=True):
+            scores = [
+                f1_score(
+                    _indices(subject["y_true"]),
+                    _indices(subject["y_pred"]),
+                    labels=labels,
+                    average="macro",
+                    zero_division=0,
+                )
+                for _, subject in group.groupby("subject_id")
+            ]
+            condition_results[str(condition)] = {
+                "samples": int(len(group)),
+                "subjects": int(group["subject_id"].nunique()),
+                "subject_macro_f1": float(np.mean(scores)),
+            }
+        result["by_condition"] = condition_results
+    if {"sequence_id", "frame_index", "y_boundary", "boundary_probability"}.issubset(frame.columns):
+        result["boundary"] = boundary_metrics(frame)
     return result
 
 

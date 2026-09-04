@@ -10,6 +10,8 @@ def test_study_configuration_is_locked_to_four_classes():
     config = load_config("configs/study.yaml")
     assert tuple(config["study"]["labels"]) == PHASES
     assert config["data"]["development_folds"] == 5
+    assert config["training"]["thermal_gait_phasenet"]["default_window"] == 27
+    assert config["training"]["thermal_gait_phasenet"]["dilations"] == [1, 2, 4, 8]
 
 
 def test_wrong_label_order_is_rejected(tmp_path):
