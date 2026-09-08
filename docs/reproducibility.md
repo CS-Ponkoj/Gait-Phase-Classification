@@ -99,7 +99,11 @@ gait-phase train `
   --allow-provisional
 ```
 
-Frozen-test evaluation additionally requires `--evaluation-split test --allow-test`. Never use the test result to revise preprocessing, labels, model selection, or hyperparameters.
+Frozen-test neural evaluation additionally requires `--evaluation-split test
+--allow-test --fixed-training-epochs` and an explicit development-selected
+`--epochs` value. In this mode, evaluation data is not used for loss, early
+stopping, or checkpoint selection. Never use the test result to revise
+preprocessing, labels, model selection, or hyperparameters.
 
 Run development folds first:
 
@@ -115,7 +119,7 @@ Use `--no-augmentation` for the registered augmentation ablation. Use `--trainin
 The untouched test partition requires explicit acknowledgement:
 
 ```powershell
-gait-phase train --manifest data/manifests/generated/casia_a_c_frozen.csv --model tcn --evaluation-split test --allow-test --pretrained
+gait-phase train --manifest data/manifests/generated/casia_a_c_frozen.csv --model tcn --evaluation-split test --allow-test --fixed-training-epochs --epochs 5 --pretrained
 ```
 
 Every run receives a unique directory under `artifacts/runs/` containing configuration, environment, checkpoint, learning curves where applicable, predictions, and metrics. Generate manuscript evidence only from saved predictions:

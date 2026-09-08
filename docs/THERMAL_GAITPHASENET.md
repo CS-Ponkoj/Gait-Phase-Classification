@@ -152,8 +152,31 @@ Every run is stored separately under `artifacts\runs\`. Important files are:
 ## Frozen test warning
 
 Do not run the test partition during model development. The test command requires
-the explicit `--allow-test` option and should be used only after preprocessing,
+explicit test acknowledgement and should be used only after preprocessing,
 window size, architecture, loss weights, and training settings are frozen.
+
+Aggregate and validate the registered development runs first:
+
+```powershell
+.\.venv\Scripts\python.exe -m gait_phase.cli aggregate-results `
+  --registry .\configs\development_runs_v1.yaml `
+  --workspace . `
+  --output .\artifacts\paper_assets\development_v2 `
+  --bootstrap-iterations 2000
+```
+
+The five TGPN folds selected eight final training epochs: the median of their
+best validation-loss epochs (8, 7, 8, 9, and 12). The final launcher trains on
+all development subjects for exactly eight epochs. It does not calculate test
+loss during training and cannot use test data for early stopping or checkpoint
+selection. Run it only at the final test gate:
+
+```powershell
+.\scripts\train-final-provisional.ps1 -Epochs 8 -AllowFrozenTest
+```
+
+Direct neural test commands are rejected unless they include both
+`--allow-test` and `--fixed-training-epochs`, plus an explicit `--epochs` value.
 
 The current labels are AI-provisional operational labels. Model results are
 engineering evidence, not clinical ground-truth evidence.

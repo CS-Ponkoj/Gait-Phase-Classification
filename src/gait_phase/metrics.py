@@ -176,34 +176,77 @@ def subject_macro_f1(frame: pd.DataFrame) -> float:
     return float(compute_metrics(frame)["subject_macro_f1"])
 
 
+def subject_macro_f1_scores(frame: pd.DataFrame) -> pd.Series:
+    """Return one macro-F1 value per subject for efficient clustered inference."""
+    labels = list(range(len(PHASES)))
+    return frame.groupby("subject_id", sort=True).apply(
+        lambda group: f1_score(
+            _indices(group["y_true"]),
+            _indices(group["y_pred"]),
+            labels=labels,
+            average="macro",
+            zero_division=0,
+        ),
+        include_groups=False,
+    )
+
+
+def subject_macro_f1_interval(
+    frame: pd.DataFrame,
+    iterations: int = 2000,
+    confidence: float = 0.95,
+    seed: int = 20260827,
+) -> dict[str, float]:
+    """Bootstrap the mean subject-level macro F1 without rebuilding frame tables."""
+    if iterations < 100:
+        raise ValueError("Use at least 100 bootstrap iterations.")
+    scores = subject_macro_f1_scores(frame).to_numpy(dtype=float)
+    if len(scores) < 2:
+        raise ValueError("Subject-clustered bootstrap requires at least two subjects.")
+    rng = np.random.default_rng(seed)
+    sampled = rng.choice(scores, size=(iterations, len(scores)), replace=True).mean(axis=1)
+    alpha = (1.0 - confidence) / 2.0
+    return {
+        "estimate": float(scores.mean()),
+        "lower": float(np.quantile(sampled, alpha)),
+        "upper": float(np.quantile(sampled, 1.0 - alpha)),
+        "confidence": confidence,
+        "iterations": iterations,
+    }
+
+
 def paired_subject_bootstrap_difference(
     left: pd.DataFrame,
     right: pd.DataFrame,
     iterations: int = 2000,
     seed: int = 20260827,
 ) -> dict[str, float]:
+    if iterations < 100:
+        raise ValueError("Use at least 100 bootstrap iterations.")
     keys = ["sample_id", "subject_id", "y_true"]
     merged = left[keys + ["y_pred"]].merge(
         right[keys + ["y_pred"]], on=keys, suffixes=("_left", "_right"), validate="one_to_one"
     )
-    subjects = merged["subject_id"].drop_duplicates().to_numpy()
+    if len(merged) != len(left) or len(merged) != len(right):
+        raise ValueError("Paired predictions must contain exactly the same samples, subjects, and labels.")
+    left_scores = subject_macro_f1_scores(
+        merged.rename(columns={"y_pred_left": "y_pred"})
+    )
+    right_scores = subject_macro_f1_scores(
+        merged.rename(columns={"y_pred_right": "y_pred"})
+    )
+    if not left_scores.index.equals(right_scores.index):
+        raise ValueError("Paired predictions must contain exactly the same subjects.")
+    score_differences = left_scores.to_numpy(dtype=float) - right_scores.to_numpy(dtype=float)
     rng = np.random.default_rng(seed)
-    differences: list[float] = []
-    for _ in range(iterations):
-        chosen = rng.choice(subjects, size=len(subjects), replace=True)
-        left_parts, right_parts = [], []
-        for occurrence, subject in enumerate(chosen):
-            group = merged[merged["subject_id"] == subject].copy()
-            group["subject_id"] = f"{subject}#{occurrence}"
-            left_parts.append(group.rename(columns={"y_pred_left": "y_pred"}))
-            right_parts.append(group.rename(columns={"y_pred_right": "y_pred"}))
-        left_score = subject_macro_f1(pd.concat(left_parts, ignore_index=True))
-        right_score = subject_macro_f1(pd.concat(right_parts, ignore_index=True))
-        differences.append(left_score - right_score)
-    estimate = subject_macro_f1(left) - subject_macro_f1(right)
+    differences = rng.choice(
+        score_differences,
+        size=(iterations, len(score_differences)),
+        replace=True,
+    ).mean(axis=1)
     return {
-        "estimate": float(estimate),
+        "estimate": float(score_differences.mean()),
         "lower": float(np.quantile(differences, 0.025)),
         "upper": float(np.quantile(differences, 0.975)),
-        "probability_left_better": float(np.mean(np.asarray(differences) > 0)),
+        "probability_left_better": float(np.mean(differences > 0)),
     }

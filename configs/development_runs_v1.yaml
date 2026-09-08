@@ -1,0 +1,85 @@
+version: development_runs_v1
+final_training:
+  selected_variant: tgpn_27
+  epochs: 8
+  selection_rule: median best-validation-loss epoch across five development folds
+  test_checkpoint_policy: final checkpoint after fixed training; test data never used for selection
+expected:
+  folds: [0, 1, 2, 3, 4]
+  samples: 78021
+  subjects: 122
+  manifest: data/processed/provisional_v0.1-ai/folds/fold_0/manifest.csv.gz
+
+variants:
+  tgpn_27:
+    role: proposed_model
+    runs:
+      "0": 20260904T023756Z-tgpn-c8e599a7
+      "1": 20260906T181943Z-tgpn-06358aff
+      "2": 20260906T185143Z-tgpn-7d3fa74e
+      "3": 20260906T192624Z-tgpn-6824c1c9
+      "4": 20260906T200414Z-tgpn-edd604b2
+  tcn_ordered:
+    role: temporal_baseline
+    runs:
+      "0": 20260902T183223Z-tcn-cf47ee57
+      "1": 20260903T001423Z-tcn-e4b32042
+      "2": 20260903T015611Z-tcn-506f21c0
+      "3": 20260903T042820Z-tcn-1b4b82a1
+      "4": 20260903T071112Z-tcn-fbdfe495
+  tcn_repeated:
+    role: temporal_control
+    runs:
+      "0": 20260904T193438Z-tcn-244cfa35
+      "1": 20260907T082832Z-tcn-787ac090
+      "2": 20260907T122941Z-tcn-4345fe5d
+      "3": 20260907T151151Z-tcn-6a40c9ad
+      "4": 20260907T175525Z-tcn-305162c1
+  tcn_shuffled:
+    role: temporal_control
+    runs:
+      "0": 20260908T015923Z-tcn-4d9cdf19
+      "1": 20260908T042527Z-tcn-da988d59
+      "2": 20260908T062754Z-tcn-f114712e
+      "3": 20260908T085233Z-tcn-77963be3
+      "4": 20260908T114305Z-tcn-1d78f49a
+  cnn:
+    role: single_frame_baseline
+    runs:
+      "0": 20260903T100048Z-cnn-8b6120fb
+      "1": 20260903T101437Z-cnn-5da3d114
+      "2": 20260903T102541Z-cnn-5bcb6b2b
+      "3": 20260903T104046Z-cnn-abed041d
+      "4": 20260903T105321Z-cnn-409ad49a
+  hog_svm:
+    role: classical_baseline
+    runs:
+      "0": 20260907T050309Z-hog_svm-9ac4b44d
+      "1": 20260907T052801Z-hog_svm-cdd24856
+      "2": 20260907T055138Z-hog_svm-c6d9d23d
+      "3": 20260907T061354Z-hog_svm-96e78649
+      "4": 20260907T063004Z-hog_svm-513b68a1
+  majority:
+    role: trivial_baseline
+    runs:
+      "0": 20260902T043510Z-majority-d63ee481
+      "1": 20260902T043516Z-majority-c13b98fb
+      "2": 20260902T043521Z-majority-57c3a902
+      "3": 20260902T043527Z-majority-818574ee
+      "4": 20260902T043533Z-majority-3b59d02c
+  cycle_prior:
+    role: diagnostic_only_circular_label_prior
+    runs:
+      "0": 20260902T043539Z-cycle_prior-d63ee481
+      "1": 20260902T043545Z-cycle_prior-c13b98fb
+      "2": 20260902T043551Z-cycle_prior-57c3a902
+      "3": 20260902T043557Z-cycle_prior-818574ee
+      "4": 20260902T043602Z-cycle_prior-3b59d02c
+
+comparisons:
+  - {left: tgpn_27, right: tcn_ordered}
+  - {left: tgpn_27, right: cnn}
+  - {left: tgpn_27, right: hog_svm}
+  - {left: tgpn_27, right: majority}
+  - {left: tcn_ordered, right: tcn_repeated}
+  - {left: tcn_ordered, right: tcn_shuffled}

@@ -5,21 +5,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 from .constants import PHASES
-from .metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
+from .metrics import compute_metrics, subject_macro_f1_interval
 
 
 def make_paper_assets(predictions: pd.DataFrame, output_dir: str | Path, bootstrap_iterations: int = 2000) -> dict[str, object]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     metrics = compute_metrics(predictions)
-    interval = subject_bootstrap_interval(
-        predictions, subject_macro_f1, iterations=bootstrap_iterations
-    )
+    interval = subject_macro_f1_interval(predictions, iterations=bootstrap_iterations)
     metrics["subject_macro_f1_interval"] = interval
     with (output / "metrics.json").open("w", encoding="utf-8") as stream:
         json.dump(metrics, stream, indent=2)

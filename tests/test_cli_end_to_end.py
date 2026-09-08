@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import yaml
 from PIL import Image
 
 from gait_phase.cli import main
@@ -104,3 +105,48 @@ def test_tgpn_one_epoch_smoke_run_produces_dense_predictions(tmp_path):
     assert len(predictions) == 2 * len(PHASES)
     assert {"boundary_probability", "y_boundary"}.issubset(predictions.columns)
     assert (run_directory / "model.pt").is_file()
+
+
+def test_final_neural_evaluation_requires_and_records_fixed_epoch_training(tmp_path):
+    manifest = create_frozen_fixture(tmp_path)
+    frame = pd.read_csv(manifest, dtype=str, keep_default_na=False)
+    test_subject = "casia_c:005"
+    frame.loc[frame.subject_id.eq(test_subject), "split"] = "test"
+    frame.loc[frame.subject_id.eq(test_subject), "fold"] = "-1"
+    frame.to_csv(manifest, index=False)
+    common = [
+        "train",
+        "--manifest",
+        str(manifest),
+        "--workspace",
+        str(tmp_path),
+        "--model",
+        "tgpn",
+        "--evaluation-split",
+        "test",
+        "--allow-test",
+        "--epochs",
+        "1",
+        "--batch-size",
+        "2",
+        "--temporal-window",
+        "9",
+        "--learning-rate",
+        "0.0003",
+        "--device",
+        "cpu",
+        "--no-augmentation",
+    ]
+
+    assert main(common) == 2
+    assert not (tmp_path / "artifacts" / "runs").exists()
+    assert main(common + ["--fixed-training-epochs"]) == 0
+
+    run_directory = next((tmp_path / "artifacts" / "runs").glob("*-tgpn-*"))
+    config = yaml.safe_load((run_directory / "config.yaml").read_text())
+    curves = pd.read_csv(run_directory / "learning_curves.csv")
+    predictions = pd.read_csv(run_directory / "predictions.csv")
+    assert config["training_run"]["checkpoint_selection"] == "fixed_epochs_no_evaluation_selection"
+    assert config["training_run"]["fixed_training_epochs"] is True
+    assert "validation_loss" not in curves.columns
+    assert set(predictions.subject_id) == {test_subject}

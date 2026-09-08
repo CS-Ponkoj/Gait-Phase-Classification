@@ -40,6 +40,7 @@ training:
     attention_heads: 4
     backbone_learning_rate: 0.000015
     weight_decay: 0.0001
+    scheduler_horizon_epochs: 30
     freeze_encoder_epochs: 2
     mixed_precision: true
     loss_weights:

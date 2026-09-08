@@ -1,7 +1,14 @@
 import pandas as pd
 import pytest
 
-from gait_phase.metrics import boundary_metrics, compute_metrics, subject_bootstrap_interval, subject_macro_f1
+from gait_phase.metrics import (
+    boundary_metrics,
+    compute_metrics,
+    paired_subject_bootstrap_difference,
+    subject_bootstrap_interval,
+    subject_macro_f1,
+    subject_macro_f1_interval,
+)
 
 
 def predictions():
@@ -39,6 +46,14 @@ def test_subject_bootstrap_is_clustered_and_deterministic():
     right = subject_bootstrap_interval(predictions(), subject_macro_f1, iterations=100)
     assert left == right
     assert left["lower"] == left["upper"] == 1.0
+    assert subject_macro_f1_interval(predictions(), iterations=100) == left
+
+
+def test_paired_bootstrap_requires_identical_samples():
+    left = predictions().assign(sample_id=lambda frame: range(len(frame)))
+    right = left.iloc[:-1].copy()
+    with pytest.raises(ValueError, match="exactly the same"):
+        paired_subject_bootstrap_difference(left, right, iterations=100)
 
 
 def test_unknown_phase_fails():

@@ -16,9 +16,10 @@ from .annotations import annotation_agreement, boundary_disagreement, expand_bou
 from .auto_annotations import build_provisional_release
 from .baselines import CyclePriorBaseline, HogSvmBaseline, MajorityBaseline
 from .config import load_config
+from .experiment_summary import aggregate_registered_runs
 from .hashing import sha256_file
 from .manifest import build_manifest, duplicate_audit, manifest_summary, validate_manifest
-from .metrics import compute_metrics, subject_bootstrap_interval, subject_macro_f1
+from .metrics import compute_metrics, subject_macro_f1_interval
 from .models import build_frame_cnn, build_temporal_tcn, build_thermal_gait_phasenet
 from .paper_assets import make_paper_assets
 from .pilot import build_pilot_package
@@ -225,6 +226,16 @@ def command_validate_prepared_data(args: argparse.Namespace) -> int:
 
 def command_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
+    neural_model = args.model in {"cnn", "tcn", "tgpn"}
+    if args.fixed_training_epochs and args.evaluation_split != "test":
+        raise ValueError("--fixed-training-epochs is reserved for the final test workflow.")
+    if args.evaluation_split == "test" and neural_model:
+        if not args.fixed_training_epochs:
+            raise ValueError(
+                "Final neural evaluation requires --fixed-training-epochs so test data cannot select a checkpoint."
+            )
+        if args.epochs is None:
+            raise ValueError("Final neural evaluation requires an explicit development-selected --epochs value.")
     if args.model != "tcn" and args.temporal_control != "ordered":
         raise ValueError("Temporal controls repeated/shuffled are supported only by the center-frame TCN.")
     config["training"]["augmentation"] = bool(args.augmentation)
@@ -267,6 +278,8 @@ def command_train(args: argparse.Namespace) -> int:
         "evaluation_split": args.evaluation_split,
         "test_accessed": args.evaluation_split == "test",
         "temporal_control": args.temporal_control,
+        "fixed_training_epochs": bool(args.fixed_training_epochs),
+        "checkpoint_selection": "not_applicable" if not neural_model else None,
     }
     set_determinism(int(config["study"]["seed"]))
     workspace = _workspace(args.workspace)
@@ -310,10 +323,27 @@ def command_train(args: argparse.Namespace) -> int:
             pickle.dump(model.model, stream)
     elif args.model == "cnn":
         model = build_frame_cnn(pretrained=args.pretrained)
-        predictions = train_torch_model(model, train_frame, validation_frame, workspace, run_dir, config)
+        predictions = train_torch_model(
+            model,
+            train_frame,
+            validation_frame,
+            workspace,
+            run_dir,
+            config,
+            select_checkpoint=args.evaluation_split != "test",
+        )
     elif args.model == "tcn":
         model = build_temporal_tcn(pretrained=args.pretrained)
-        predictions = train_torch_model(model, train_frame, validation_frame, workspace, run_dir, config, temporal=True)
+        predictions = train_torch_model(
+            model,
+            train_frame,
+            validation_frame,
+            workspace,
+            run_dir,
+            config,
+            temporal=True,
+            select_checkpoint=args.evaluation_split != "test",
+        )
     elif args.model == "tgpn":
         settings = config["training"]["thermal_gait_phasenet"]
         model = build_thermal_gait_phasenet(
@@ -330,6 +360,7 @@ def command_train(args: argparse.Namespace) -> int:
             workspace,
             run_dir,
             config,
+            select_checkpoint=args.evaluation_split != "test",
         )
     else:
         raise ValueError(f"Unsupported model: {args.model}")
@@ -341,8 +372,8 @@ def command_train(args: argparse.Namespace) -> int:
 def command_evaluate(args: argparse.Namespace) -> int:
     predictions = pd.read_csv(args.predictions)
     metrics = compute_metrics(predictions)
-    metrics["subject_macro_f1_interval"] = subject_bootstrap_interval(
-        predictions, subject_macro_f1, iterations=args.bootstrap_iterations
+    metrics["subject_macro_f1_interval"] = subject_macro_f1_interval(
+        predictions, iterations=args.bootstrap_iterations
     )
     if args.output:
         Path(args.output).write_text(json.dumps(metrics, indent=2), encoding="utf-8")
@@ -354,6 +385,17 @@ def command_assets(args: argparse.Namespace) -> int:
     predictions = pd.read_csv(args.predictions)
     metrics = make_paper_assets(predictions, args.output, args.bootstrap_iterations)
     print(json.dumps({"output": str(Path(args.output).resolve()), "subject_macro_f1": metrics["subject_macro_f1"]}, indent=2))
+    return 0
+
+
+def command_aggregate_results(args: argparse.Namespace) -> int:
+    summary = aggregate_registered_runs(
+        args.registry,
+        _workspace(args.workspace),
+        args.output,
+        args.bootstrap_iterations,
+    )
+    print(json.dumps({"output": str(Path(args.output).resolve()), **summary}, indent=2))
     return 0
 
 
@@ -427,6 +469,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--fold", type=int, choices=range(5), default=0)
     train.add_argument("--evaluation-split", choices=["validation", "test"], default="validation")
     train.add_argument("--allow-test", action="store_true")
+    train.add_argument(
+        "--fixed-training-epochs",
+        action="store_true",
+        help="Train for exactly --epochs without using final evaluation data for checkpoint selection.",
+    )
     train.add_argument("--label-source", choices=["adjudicated", "provisional"], default="adjudicated")
     train.add_argument("--allow-provisional", action="store_true")
     train.add_argument("--pretrained", action="store_true")
@@ -458,6 +505,15 @@ def build_parser() -> argparse.ArgumentParser:
     assets.add_argument("--output", required=True)
     assets.add_argument("--bootstrap-iterations", type=int, default=2000)
     assets.set_defaults(function=command_assets)
+    aggregate = subparsers.add_parser(
+        "aggregate-results",
+        help="Validate registered development runs and generate cross-validation evidence.",
+    )
+    aggregate.add_argument("--registry", required=True)
+    aggregate.add_argument("--workspace")
+    aggregate.add_argument("--output", required=True)
+    aggregate.add_argument("--bootstrap-iterations", type=int, default=2000)
+    aggregate.set_defaults(function=command_aggregate_results)
     return parser
 
 

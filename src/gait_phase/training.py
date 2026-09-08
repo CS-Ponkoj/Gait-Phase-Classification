@@ -383,6 +383,7 @@ def train_torch_model(
     run_dir: Path,
     config: dict[str, Any],
     temporal: bool = False,
+    select_checkpoint: bool = True,
 ) -> pd.DataFrame:
     import torch
     from torch.utils.data import DataLoader
@@ -401,7 +402,11 @@ def train_torch_model(
         else {}
     )
     train_dataset = dataset_class(train_frame, workspace, image_size, augment=bool(settings.get("augmentation", True)), **dataset_kwargs)
-    validation_dataset = dataset_class(validation_frame, workspace, image_size, augment=False, **dataset_kwargs)
+    validation_dataset = (
+        dataset_class(validation_frame, workspace, image_size, augment=False, **dataset_kwargs)
+        if select_checkpoint
+        else None
+    )
     generator = torch.Generator().manual_seed(seed)
     workers = int(settings.get("num_workers", 0))
     requested_device = str(settings.get("device", "auto"))
@@ -427,10 +432,17 @@ def train_torch_model(
         "persistent_workers": workers > 0,
     }
     train_loader = DataLoader(train_dataset, shuffle=True, generator=generator, **loader_options)
-    validation_loader = DataLoader(validation_dataset, shuffle=False, **loader_options)
+    validation_loader = (
+        DataLoader(validation_dataset, shuffle=False, **loader_options)
+        if validation_dataset is not None
+        else None
+    )
     config["training_run"]["resolved_device"] = str(device)
     config["training_run"]["cuda_device_name"] = (
         torch.cuda.get_device_name(0) if device.type == "cuda" else None
+    )
+    config["training_run"]["checkpoint_selection"] = (
+        "validation_loss_early_stopping" if select_checkpoint else "fixed_epochs_no_evaluation_selection"
     )
     progress_every = max(1, int(settings.get("progress_every_batches", 100)))
     model.to(device)
@@ -443,8 +455,8 @@ def train_torch_model(
     checkpoint = run_dir / "model.pt"
     print(
         f"device={device} train_samples={len(train_dataset)} "
-        f"validation_samples={len(validation_dataset)} train_batches={len(train_loader)} "
-        f"validation_batches={len(validation_loader)}",
+        f"evaluation_samples={len(validation_frame)} train_batches={len(train_loader)} "
+        f"selection_batches={len(validation_loader) if validation_loader is not None else 0}",
         flush=True,
     )
     for epoch in range(int(settings["epochs"])):
@@ -475,45 +487,57 @@ def train_torch_model(
                     f"eta={_format_duration(remaining)}{gpu_memory}",
                     flush=True,
                 )
-        model.eval()
-        validation_losses = []
-        validation_started = time.monotonic()
-        with torch.no_grad():
-            for batch_number, (inputs, targets, _) in enumerate(validation_loader, start=1):
-                inputs, targets = inputs.to(device), targets.to(device)
-                validation_losses.append(float(loss_function(model(inputs), targets).cpu()))
-                if (
-                    batch_number == 1
-                    or batch_number % progress_every == 0
-                    or batch_number == len(validation_loader)
-                ):
-                    elapsed = time.monotonic() - validation_started
-                    batches_per_second = batch_number / max(elapsed, 1e-9)
-                    remaining = (len(validation_loader) - batch_number) / max(batches_per_second, 1e-9)
-                    print(
-                        f"[validation] epoch={epoch + 1}/{int(settings['epochs'])} "
-                        f"batch={batch_number}/{len(validation_loader)} "
-                        f"({100 * batch_number / len(validation_loader):.1f}%) "
-                        f"loss={np.mean(validation_losses):.6f} elapsed={_format_duration(elapsed)} "
-                        f"eta={_format_duration(remaining)}",
-                        flush=True,
-                    )
-        validation_loss = float(np.mean(validation_losses))
         train_loss = float(np.mean(train_losses))
-        history.append({"epoch": epoch + 1, "train_loss": train_loss, "validation_loss": validation_loss})
-        print(
-            f"epoch={epoch + 1}/{int(settings['epochs'])} "
-            f"train_loss={train_loss:.6f} validation_loss={validation_loss:.6f}",
-            flush=True,
-        )
-        if validation_loss < best_loss - 1e-6:
-            best_loss, patience = validation_loss, 0
-            torch.save(model.state_dict(), checkpoint)
+        if select_checkpoint:
+            assert validation_loader is not None
+            model.eval()
+            validation_losses = []
+            validation_started = time.monotonic()
+            with torch.no_grad():
+                for batch_number, (inputs, targets, _) in enumerate(validation_loader, start=1):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    validation_losses.append(float(loss_function(model(inputs), targets).cpu()))
+                    if batch_number == 1 or batch_number % progress_every == 0 or batch_number == len(validation_loader):
+                        elapsed = time.monotonic() - validation_started
+                        batches_per_second = batch_number / max(elapsed, 1e-9)
+                        remaining = (len(validation_loader) - batch_number) / max(batches_per_second, 1e-9)
+                        print(
+                            f"[validation] epoch={epoch + 1}/{int(settings['epochs'])} "
+                            f"batch={batch_number}/{len(validation_loader)} "
+                            f"({100 * batch_number / len(validation_loader):.1f}%) "
+                            f"loss={np.mean(validation_losses):.6f} elapsed={_format_duration(elapsed)} "
+                            f"eta={_format_duration(remaining)}",
+                            flush=True,
+                        )
+            validation_loss = float(np.mean(validation_losses))
+            history.append({"epoch": epoch + 1, "train_loss": train_loss, "validation_loss": validation_loss})
+            print(
+                f"epoch={epoch + 1}/{int(settings['epochs'])} "
+                f"train_loss={train_loss:.6f} validation_loss={validation_loss:.6f}",
+                flush=True,
+            )
+            if validation_loss < best_loss - 1e-6:
+                best_loss, patience = validation_loss, 0
+                torch.save(model.state_dict(), checkpoint)
+            else:
+                patience += 1
+                if patience >= int(settings["early_stopping_patience"]):
+                    break
         else:
-            patience += 1
-            if patience >= int(settings["early_stopping_patience"]):
-                break
+            history.append({"epoch": epoch + 1, "train_loss": train_loss})
+            print(
+                f"epoch={epoch + 1}/{int(settings['epochs'])} train_loss={train_loss:.6f} "
+                "evaluation_not_used_for_selection=true",
+                flush=True,
+            )
+    if not select_checkpoint:
+        torch.save(model.state_dict(), checkpoint)
+        validation_dataset = dataset_class(
+            validation_frame, workspace, image_size, augment=False, **dataset_kwargs
+        )
+        validation_loader = DataLoader(validation_dataset, shuffle=False, **loader_options)
     pd.DataFrame(history).to_csv(run_dir / "learning_curves.csv", index=False)
+    assert validation_dataset is not None and validation_loader is not None
     model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
     model.eval()
     predictions = np.empty(len(validation_dataset), dtype=object)
@@ -599,6 +623,7 @@ def train_thermal_gait_phasenet(
     workspace: str | Path,
     run_dir: Path,
     config: dict[str, Any],
+    select_checkpoint: bool = True,
 ) -> pd.DataFrame:
     """Train Thermal GaitPhaseNet and aggregate dense overlapping predictions."""
     import torch
@@ -618,13 +643,17 @@ def train_thermal_gait_phasenet(
         stride,
         augment=bool(settings.get("augmentation", True)),
     )
-    validation_dataset = DenseTemporalDataset(
-        validation_frame,
-        workspace,
-        image_size,
-        window,
-        stride,
-        augment=False,
+    validation_dataset = (
+        DenseTemporalDataset(
+            validation_frame,
+            workspace,
+            image_size,
+            window,
+            stride,
+            augment=False,
+        )
+        if select_checkpoint
+        else None
     )
     generator = torch.Generator().manual_seed(seed)
     workers = int(settings.get("num_workers", 0))
@@ -648,6 +677,9 @@ def train_thermal_gait_phasenet(
     config["training_run"]["dense_sequence_output"] = True
     config["training_run"]["aligned_image_size"] = list(image_size)
     config["training_run"]["clip_stride"] = stride
+    config["training_run"]["checkpoint_selection"] = (
+        "validation_loss_early_stopping" if select_checkpoint else "fixed_epochs_no_evaluation_selection"
+    )
 
     loader_options = {
         "batch_size": int(settings["batch_size"]),
@@ -656,7 +688,11 @@ def train_thermal_gait_phasenet(
         "persistent_workers": workers > 0,
     }
     train_loader = DataLoader(train_dataset, shuffle=True, generator=generator, **loader_options)
-    validation_loader = DataLoader(validation_dataset, shuffle=False, **loader_options)
+    validation_loader = (
+        DataLoader(validation_dataset, shuffle=False, **loader_options)
+        if validation_dataset is not None
+        else None
+    )
     model.to(device)
 
     counts = train_frame["target_label"].value_counts()
@@ -684,7 +720,10 @@ def train_thermal_gait_phasenet(
         weight_decay=float(model_settings.get("weight_decay", 1e-4)),
     )
     epochs = int(settings["epochs"])
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=max(1, int(model_settings.get("scheduler_horizon_epochs", epochs))),
+    )
     use_amp = device.type == "cuda" and bool(model_settings.get("mixed_precision", True))
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     freeze_epochs = int(model_settings.get("freeze_encoder_epochs", 2))
@@ -695,8 +734,9 @@ def train_thermal_gait_phasenet(
     patience = 0
     history: list[dict[str, float]] = []
     print(
-        f"device={device} train_frames={len(train_frame)} validation_frames={len(validation_frame)} "
-        f"train_clips={len(train_dataset)} validation_clips={len(validation_dataset)} "
+        f"device={device} train_frames={len(train_frame)} evaluation_frames={len(validation_frame)} "
+        f"train_clips={len(train_dataset)} "
+        f"selection_clips={len(validation_dataset) if validation_dataset is not None else 0} "
         f"window={window} stride={stride} amp={use_amp}",
         flush=True,
     )
@@ -754,56 +794,84 @@ def train_thermal_gait_phasenet(
                     flush=True,
                 )
 
-        model.eval()
-        validation_losses: list[float] = []
-        validation_started = time.monotonic()
-        with torch.no_grad():
-            for batch_number, (inputs, targets, boundaries, mask, _) in enumerate(validation_loader, start=1):
-                inputs = inputs.to(device, non_blocking=True)
-                targets = targets.to(device, non_blocking=True)
-                boundaries = boundaries.to(device, non_blocking=True)
-                mask = mask.to(device, non_blocking=True)
-                with torch.amp.autocast(device_type=device.type, enabled=use_amp):
-                    losses = calculate_losses(model(inputs), targets, boundaries, mask)
-                validation_losses.append(float(losses["total"].cpu()))
-                if batch_number == 1 or batch_number % progress_every == 0 or batch_number == len(validation_loader):
-                    elapsed = time.monotonic() - validation_started
-                    rate = batch_number / max(elapsed, 1e-9)
-                    remaining = (len(validation_loader) - batch_number) / max(rate, 1e-9)
-                    print(
-                        f"[validation] epoch={epoch + 1}/{epochs} batch={batch_number}/{len(validation_loader)} "
-                        f"({100 * batch_number / len(validation_loader):.1f}%) "
-                        f"loss={np.mean(validation_losses):.6f} elapsed={_format_duration(elapsed)} "
-                        f"eta={_format_duration(remaining)}",
-                        flush=True,
-                    )
         train_loss = float(np.mean(train_losses))
-        validation_loss = float(np.mean(validation_losses))
-        history.append(
-            {
-                "epoch": epoch + 1,
-                "train_loss": train_loss,
-                "validation_loss": validation_loss,
-                "encoder_frozen": float(encoder_frozen),
-                "head_learning_rate": float(optimizer.param_groups[1]["lr"]),
-            }
-        )
-        print(
-            f"epoch={epoch + 1}/{epochs} train_loss={train_loss:.6f} "
-            f"validation_loss={validation_loss:.6f}",
-            flush=True,
-        )
-        if validation_loss < best_loss - 1e-6:
-            best_loss = validation_loss
-            patience = 0
-            torch.save(model.state_dict(), checkpoint)
+        if select_checkpoint:
+            assert validation_loader is not None
+            model.eval()
+            validation_losses: list[float] = []
+            validation_started = time.monotonic()
+            with torch.no_grad():
+                for batch_number, (inputs, targets, boundaries, mask, _) in enumerate(validation_loader, start=1):
+                    inputs = inputs.to(device, non_blocking=True)
+                    targets = targets.to(device, non_blocking=True)
+                    boundaries = boundaries.to(device, non_blocking=True)
+                    mask = mask.to(device, non_blocking=True)
+                    with torch.amp.autocast(device_type=device.type, enabled=use_amp):
+                        losses = calculate_losses(model(inputs), targets, boundaries, mask)
+                    validation_losses.append(float(losses["total"].cpu()))
+                    if batch_number == 1 or batch_number % progress_every == 0 or batch_number == len(validation_loader):
+                        elapsed = time.monotonic() - validation_started
+                        rate = batch_number / max(elapsed, 1e-9)
+                        remaining = (len(validation_loader) - batch_number) / max(rate, 1e-9)
+                        print(
+                            f"[validation] epoch={epoch + 1}/{epochs} batch={batch_number}/{len(validation_loader)} "
+                            f"({100 * batch_number / len(validation_loader):.1f}%) "
+                            f"loss={np.mean(validation_losses):.6f} elapsed={_format_duration(elapsed)} "
+                            f"eta={_format_duration(remaining)}",
+                            flush=True,
+                        )
+            validation_loss = float(np.mean(validation_losses))
+            history.append(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": train_loss,
+                    "validation_loss": validation_loss,
+                    "encoder_frozen": float(encoder_frozen),
+                    "head_learning_rate": float(optimizer.param_groups[1]["lr"]),
+                }
+            )
+            print(
+                f"epoch={epoch + 1}/{epochs} train_loss={train_loss:.6f} "
+                f"validation_loss={validation_loss:.6f}",
+                flush=True,
+            )
+            if validation_loss < best_loss - 1e-6:
+                best_loss = validation_loss
+                patience = 0
+                torch.save(model.state_dict(), checkpoint)
+            else:
+                patience += 1
+                if patience >= int(settings["early_stopping_patience"]):
+                    break
         else:
-            patience += 1
-            if patience >= int(settings["early_stopping_patience"]):
-                break
+            history.append(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": train_loss,
+                    "encoder_frozen": float(encoder_frozen),
+                    "head_learning_rate": float(optimizer.param_groups[1]["lr"]),
+                }
+            )
+            print(
+                f"epoch={epoch + 1}/{epochs} train_loss={train_loss:.6f} "
+                "evaluation_not_used_for_selection=true",
+                flush=True,
+            )
         scheduler.step()
 
+    if not select_checkpoint:
+        torch.save(model.state_dict(), checkpoint)
+        validation_dataset = DenseTemporalDataset(
+            validation_frame,
+            workspace,
+            image_size,
+            window,
+            stride,
+            augment=False,
+        )
+        validation_loader = DataLoader(validation_dataset, shuffle=False, **loader_options)
     pd.DataFrame(history).to_csv(run_dir / "learning_curves.csv", index=False)
+    assert validation_dataset is not None and validation_loader is not None
     model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
     model.eval()
     probability_sums = np.zeros((len(validation_dataset.frame), len(PHASES)), dtype=np.float64)
