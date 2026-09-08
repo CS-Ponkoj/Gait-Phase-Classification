@@ -23,6 +23,7 @@ venv/
 /artifacts/models/
 /artifacts/runs/
 /artifacts/paper_assets/
+/artifacts/research_status_*/
 /legacy/training_workspace/models/
 *.h5
 *.keras
@@ -41,6 +42,8 @@ venv/
 /annotations/working/
 /annotations/adjudicated/
 /annotations/pilot/
+/annotations/reviewed/
+/annotations/batches/
 
 # Temporary files
 ~$*

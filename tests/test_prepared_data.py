@@ -6,7 +6,7 @@ import yaml
 from PIL import Image
 
 from gait_phase.cli import main
-from gait_phase.constants import MANIFEST_COLUMNS, PHASES
+from gait_phase.constants import MANIFEST_COLUMNS, PHASES, PHASE_TO_INDEX
 from gait_phase.hashing import sha256_file
 from gait_phase.prepared_data import prepare_training_data, validate_prepared_data
 from gait_phase.training import DenseTemporalDataset, TemporalDataset, prepare_aligned_silhouette
@@ -261,6 +261,39 @@ def test_temporal_repeated_control_uses_only_center_frame(tmp_path):
     )
     images, _, _ = dataset[2]
     assert all(images[position].equal(images[0]) for position in range(1, 5))
+
+
+def test_temporal_shuffled_control_keeps_target_centered_and_reorders_context(tmp_path):
+    rows = []
+    for frame_index in range(5):
+        relative = Path("images") / f"shuffled-{frame_index}.png"
+        path = tmp_path / relative
+        path.parent.mkdir(exist_ok=True)
+        Image.new("L", (16, 16), 20 * frame_index).save(path)
+        rows.append(
+            {
+                "sequence_id": "sequence-shuffled",
+                "frame_index": str(frame_index),
+                "relative_path": relative.as_posix(),
+                "target_label": PHASES[frame_index % len(PHASES)],
+            }
+        )
+    dataset = TemporalDataset(
+        pd.DataFrame(rows),
+        tmp_path,
+        (16, 16),
+        window=5,
+        temporal_control="shuffled",
+        seed=7,
+    )
+
+    images, target, _ = dataset[2]
+    intensities = [round(float(image.mean()) * 255) for image in images]
+
+    assert intensities[2] == 40
+    assert sorted(intensities[:2] + intensities[3:]) == [0, 20, 60, 80]
+    assert intensities != [0, 20, 40, 60, 80]
+    assert target == PHASE_TO_INDEX[PHASES[2]]
 
 
 def test_dense_temporal_dataset_covers_every_frame_and_marks_boundaries(tmp_path):

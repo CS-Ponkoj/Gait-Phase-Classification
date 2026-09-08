@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from gait_phase.auto_annotations import (
     PHASES,
@@ -72,3 +73,18 @@ def test_sequence_annotation_falls_back_without_detectable_contacts():
     assert len(labels) == 40
     assert qc["coverage_method"] == "condition_cycle_prior"
     assert set(labels["confidence"]) == {"low"}
+
+
+@pytest.mark.parametrize("step_length", [7, 10, 12, 13, 14, 15, 16, 25, 50, 100])
+def test_exported_boundaries_match_every_frame_label(step_length):
+    length = step_length * 3 + 1
+    labels, boundaries, _ = annotate_sequence_from_signal(
+        sequence_frame(length), np.full(length, 0.5), "test-consistency", step_length
+    )
+    by_frame = labels.set_index("frame_index").phase_label
+    for row in boundaries.to_dict("records"):
+        starts = [row[key] for key in ["contact_start_frame", "mid_stance_frame",
+                                      "terminal_stance_frame", "swing_frame"]]
+        ends = starts[1:] + [row["next_contact_frame"]]
+        for phase, start, end in zip(PHASES, starts, ends):
+            assert all(by_frame[str(index)] == phase for index in range(start, end))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -206,9 +207,10 @@ def annotate_sequence_from_signal(
                 "sequence_id": ordered["sequence_id"].iloc[0],
                 "cycle_id": f"step_{cycle_number:03d}",
                 "contact_start_frame": start,
-                "mid_stance_frame": start + max(1, int(round(length * PHASE_THRESHOLDS[0]))),
-                "terminal_stance_frame": start + max(2, int(round(length * PHASE_THRESHOLDS[1]))),
-                "swing_frame": start + max(3, int(round(length * PHASE_THRESHOLDS[2]))),
+                # A phase starts at the first integer frame reaching its threshold.
+                "mid_stance_frame": start + max(1, math.ceil(length * PHASE_THRESHOLDS[0])),
+                "terminal_stance_frame": start + max(2, math.ceil(length * PHASE_THRESHOLDS[1])),
+                "swing_frame": start + max(3, math.ceil(length * PHASE_THRESHOLDS[2])),
                 "next_contact_frame": end,
                 "confidence": confidence,
                 "annotation_source": "ai_provisional_silhouette_timing",

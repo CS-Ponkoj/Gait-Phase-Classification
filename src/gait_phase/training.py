@@ -273,7 +273,12 @@ class TemporalDataset(FrameDataset):
         if self.temporal_control == "repeated":
             selected = [index] * self.window
         elif self.temporal_control == "shuffled":
-            selected = np.random.default_rng(self.seed + index).permutation(selected).tolist()
+            center = radius
+            context = selected[:center] + selected[center + 1 :]
+            shuffled_context = np.random.default_rng(self.seed + index).permutation(context).tolist()
+            if len(context) > 1 and shuffled_context == context:
+                shuffled_context = shuffled_context[1:] + shuffled_context[:1]
+            selected = shuffled_context[:center] + [selected[center]] + shuffled_context[center:]
         apply_flip = self.augment and bool(torch.rand(()) < 0.5)
         images = []
         for selected_index in selected:
