@@ -17,11 +17,19 @@ from .metrics import compute_metrics, subject_macro_f1_interval
 
 
 def make_paper_assets(predictions: pd.DataFrame, output_dir: str | Path, bootstrap_iterations: int = 2000) -> dict[str, object]:
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
+    required = {"sample_id", "dataset", "condition"}
+    if missing := required - set(predictions.columns):
+        raise ValueError(f"Missing paper-asset columns: {sorted(missing)}")
+    duplicate_ids = predictions.loc[predictions["sample_id"].duplicated(keep=False), "sample_id"].astype(str).unique()
+    if len(duplicate_ids):
+        preview = sorted(duplicate_ids)[:5]
+        raise ValueError(f"Duplicate sample_id values in predictions: {preview}")
+
     metrics = compute_metrics(predictions)
     interval = subject_macro_f1_interval(predictions, iterations=bootstrap_iterations)
     metrics["subject_macro_f1_interval"] = interval
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
     with (output / "metrics.json").open("w", encoding="utf-8") as stream:
         json.dump(metrics, stream, indent=2)
     per_class = pd.DataFrame(metrics["per_class"]).T.rename_axis("phase").reset_index()

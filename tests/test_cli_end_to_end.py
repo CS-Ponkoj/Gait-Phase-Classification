@@ -7,6 +7,7 @@ from PIL import Image
 from gait_phase.cli import main
 from gait_phase.constants import MANIFEST_COLUMNS, PHASES
 from gait_phase.hashing import sha256_file
+from gait_phase.paper_assets import make_paper_assets
 
 
 def create_frozen_fixture(workspace: Path) -> Path:
@@ -70,6 +71,38 @@ def test_majority_run_and_paper_assets_are_reproducible(tmp_path):
     assert (output / "metrics.json").is_file()
     assert (output / "confusion_matrix.png").is_file()
     assert (output / "results_summary.md").is_file()
+
+
+def test_paper_assets_reject_duplicate_samples_before_writing(tmp_path):
+    predictions = pd.DataFrame(
+        [
+            {
+                "sample_id": "duplicate",
+                "dataset": "casia_c",
+                "condition": "fn00",
+                "subject_id": "casia_c:001",
+                "y_true": PHASES[0],
+                "y_pred": PHASES[0],
+            },
+            {
+                "sample_id": "duplicate",
+                "dataset": "casia_c",
+                "condition": "fn00",
+                "subject_id": "casia_c:002",
+                "y_true": PHASES[1],
+                "y_pred": PHASES[1],
+            },
+        ]
+    )
+    output = tmp_path / "paper"
+
+    try:
+        make_paper_assets(predictions, output, bootstrap_iterations=100)
+    except ValueError as error:
+        assert "Duplicate sample_id" in str(error)
+    else:
+        raise AssertionError("Duplicate samples should be rejected.")
+    assert not output.exists()
 
 
 def test_tgpn_one_epoch_smoke_run_produces_dense_predictions(tmp_path):
