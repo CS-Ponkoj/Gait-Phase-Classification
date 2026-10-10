@@ -1,109 +1,136 @@
 # Gait Phase Classification
 
-Research workspace for a reproducible, subject-independent four-phase gait classification study across visible and thermal silhouette sequences.
+Research project investigating temporal modeling for gait phase classification from silhouette sequences, with an implemented Python codebase for data preparation, training, evaluation, and reproducible analysis.
 
-The historical project is preserved unchanged under `legacy/`. A new publication-oriented Python package now provides data inventory, annotation QA, leakage-controlled splitting, baseline/model contracts, subject-level evaluation, and paper-asset generation. The research results are **not yet publication-ready** because four-phase expert annotations and final experiments do not exist.
+The accompanying paper, **Temporal Modeling under Deterministic Gait Supervision: A Subject-Independent CASIA C Study**, examines how temporal models reproduce four operational gait states and how the origin of those labels affects the interpretation of model performance. The study connects model comparisons with supervision provenance, subject-independent evaluation, and boundary-event analysis.
 
-## Current research status
+## Research overview
 
-- The canonical task is locked to four operational visual phases: initial contact/loading, mid-stance, terminal stance/pre-swing, and swing.
-- Historical three-class and binary results are retained only as background and are not evidence for the new study.
-- CASIA A is currently a 4,571-image curated subset with unresolved completeness/provenance.
-- CASIA C contains 153 verified subject archives and 100,346 PNG frames across walking conditions.
-- OU-ISIR is excluded from the publication study.
-- Existing accuracy claims must not be reused; new subject-independent results must be generated from adjudicated labels.
-- Five Dataset A duplicate groups contain identical image content under conflicting labels and require review.
-- A deterministic blinded 12-sequence CASIA C annotation pilot generator is available. It rejects frame-incomplete sequences and balances normal, slow, fast, and bag-carrying conditions.
-- The AI-provisional release can be copied into five physical train/validation fold trees and one shared frozen-test tree with `gait-phase prepare-training-data`. Provisional experiments require `--label-source provisional --allow-provisional`; test evaluation additionally requires `--allow-test`.
+Automatically labeling gait sequences makes large-scale model development possible, but agreement with a labeling rule does not establish agreement with physical gait phases. This research studies that distinction using CASIA C thermal silhouettes and deterministic targets derived from silhouette-spread intervals.
 
-See [`inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md`](inventory/2026-08-27_initial_snapshot/PRESERVATION_REPORT.md) for the evidence-backed preservation and data-lineage review.
+The paper addresses three questions:
 
-## Workspace structure
+1. How well do visual models reproduce the operational targets for unseen subjects?
+2. What information do neighboring frames and their temporal order contribute?
+3. How do target construction and boundary-event counting change the interpretation of the results?
 
-```text
-Gait Phase Classification/
-├── README.md
-├── .gitignore
-├── artifacts/
-│   └── models/standalone/        # Standalone generated checkpoint
-├── data/
-│   ├── raw/
-│   │   ├── casia_c/              # CASIA C subject archives and verified extracts
-│   │   └── ou_isir/              # Encrypted OU-ISIR Treadmill Dataset B archive
-│   └── processed/
-│       └── gait_events/
-│           ├── current/          # Current heel-strike/toe-off/other labels
-│           └── legacy/           # Earlier partial labels
-├── docs/
-│   ├── assets/
-│   ├── coursework/
-│   ├── notes/
-│   ├── paper/
-│   ├── presentations/
-│   └── references/gait/
-├── inventory/
-│   ├── 2026-08-27_initial_snapshot/
-│   └── 2026-08-27_organization/
-├── legacy/
-│   └── training_workspace/       # Original code, notebooks, Train/Test, Dataset A, models
-└── notebooks/
-    └── legacy/                   # Historical duplicate root notebook
-```
+The implementation supports four states, P0–P3, using the vocabulary below. These names describe the intended phase interpretation; the current deterministic labels are provisional and do not independently establish anatomical phase or same-foot continuity.
 
-## Historical training workspace
+| State | Operational phase vocabulary |
+| --- | --- |
+| P0 | Initial contact / loading |
+| P1 | Mid-stance |
+| P2 | Terminal stance / pre-swing |
+| P3 | Swing |
 
-The original `Gait` directory was moved intact to `legacy/training_workspace`. Its internal `Train`, `Test`, `models`, notebooks, scripts, and extracted Dataset A paths were preserved relative to one another.
+## Method
 
-The historical workspace is evidence, not a clean training pipeline. It currently lacks a locked environment, deterministic configuration, independent subject-level test procedure, and automated tests.
+**Thermal GaitPhaseNet (TGPN)** processes 27-frame clips of aligned, single-channel silhouettes. Its implemented pipeline combines:
 
-## Data safety
+- An EfficientNet-B0 encoder with global and lower-half pooling of a shared feature map.
+- An adjacent-frame difference branch for motion features.
+- Residual temporal convolutions with dilations 1, 2, 4, and 8, followed by self-attention.
+- Dense four-state predictions and a boundary prediction for each frame.
+- State and boundary losses, with temporal smoothing and cyclic-order regularization.
 
-- Do not commit or publish raw CASIA or OU-ISIR files until their licensing and redistribution terms are confirmed.
-- Keep recovered coursework and third-party reference papers local; the root `.gitignore` excludes them from publication.
-- Do not delete duplicate files based only on checksum equality. Some duplicates preserve legacy, current, archive, or extraction context.
-- Do not modify the dated inventory snapshots.
-- Create an independent backup before dataset cleanup or relabeling.
+Probabilities are averaged across overlapping clips during inference. The model uses both past and future frames within a clip; the study does not establish causal or real-time operation.
 
-## Recommended next engineering phase
+Comparisons include a majority baseline, HOG-style SVM, a single-frame CNN, and an ordered temporal convolutional network (TCN). Repeated-frame and shuffled-context TCN controls examine the contribution of temporal inputs. A cycle-position diagnostic is reported separately because it receives privileged target-generation metadata rather than visual input alone.
 
-The engineering framework is implemented. Human research work is now the critical path:
+Implementation details and training settings are documented in the [TGPN guide](docs/THERMAL_GAITPHASENET.md), [model implementation](src/gait_phase/models.py), and [study configuration](configs/study.yaml).
 
-1. Resolve or reacquire CASIA A provenance.
-2. Give each annotator the blinded `annotations/pilot/pilot_v3` package and complete the pilot using [`docs/annotation_protocol.md`](docs/annotation_protocol.md). CASIA A is excluded until complete source sequences are reacquired; visually corrupted pilot sequences are recorded in the configuration exclusion list.
-3. Reach weighted kappa >= 0.80 and obtain expert adjudication.
-4. Freeze the four-phase manifest and subject partitions.
-5. Run the registered baselines and temporal experiment, then generate the paper evidence.
+## Evaluation approach
 
-## Reproducible commands
+The study compares temporal and single-frame models under subject-independent evaluation, with controlled experiments examining neighboring-frame information and temporal order. Evaluation considers subject-level classification, boundary timing, and the relationship between supervision provenance and model predictions.
+
+The codebase supports development folds, held-out evaluation safeguards, subject-level metrics, bootstrap uncertainty estimates, and generation of manuscript tables and figures from saved predictions. The [development run registry](configs/development_runs_v1.yaml) records the experiment organization. Trained weights, predictions, and generated evidence remain local and are not included in a standard clone.
+
+## Data and evaluation scope
+
+The paper focuses on **CASIA C thermal silhouette sequences** across normal, slow, fast, and bag-carrying walking conditions. The repository also preserves an earlier CASIA A curated subset and historical single-frame experiments. Those materials provide research history and are separate from the paper's four-state CASIA C analysis. OU-ISIR is excluded from this study.
+
+Subject partitions separate development and held-out evaluation. Development launchers do not open the test partition. Final neural evaluation requires explicit test acknowledgement and a fixed training duration selected from development results; test data is not used for early stopping or checkpoint selection.
+
+Independent anatomical annotation and expert adjudication remain necessary for evaluating physical gait phases. The research scope is operational gait-state modeling; clinical applications and cross-dataset generalization require separate validation.
+
+Dataset access must be obtained under the source datasets' terms. Raw images, prepared image copies, and generated checkpoints are excluded from normal Git tracking. See the [data statement](docs/DATA_STATEMENT.md) and [annotation protocol](docs/annotation_protocol.md).
+
+## Reproducing the implementation
+
+### Environment
+
+Use **Python 3.11** from the repository root. The following PowerShell commands create an environment, install the pinned dependencies, and install the package:
 
 ```powershell
-python -m pip install -e .
-gait-phase extract-casia-c
-gait-phase build-manifest
-gait-phase validate-data data/manifests/generated/casia_a_c_manifest.csv
-gait-phase make-splits data/manifests/generated/casia_a_c_manifest.csv --output data/manifests/generated/casia_a_c_split.csv
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m gait_phase.cli --help
 ```
 
-Train the temporal model on one development fold without opening the frozen test set:
+GPU configuration is described in the [reproduction guide](docs/reproducibility.md). Training launchers use the repository environment. Pretrained encoder weights may be downloaded on first use.
+
+### Prepare licensed data
+
+Place the required source data at the paths defined in [configs/study.yaml](configs/study.yaml), then run:
 
 ```powershell
-.\scripts\train-provisional.ps1 -Model tcn -Folds 0 -Device auto
+.\.venv\Scripts\python.exe -m gait_phase.cli extract-casia-c
+.\.venv\Scripts\python.exe -m gait_phase.cli build-manifest
+.\.venv\Scripts\python.exe -m gait_phase.cli validate-data data/manifests/generated/casia_a_c_manifest.csv
+.\.venv\Scripts\python.exe -m gait_phase.cli make-splits data/manifests/generated/casia_a_c_manifest.csv --output data/manifests/generated/casia_a_c_split.csv
+.\.venv\Scripts\python.exe -m gait_phase.cli auto-annotate data/manifests/generated/casia_a_c_split.csv
+.\.venv\Scripts\python.exe -m gait_phase.cli prepare-training-data data/manifests/generated/casia_a_c_split.csv
 ```
 
-Train the proposed boundary-aware Thermal GaitPhaseNet on a one-epoch smoke run:
+Preparation creates the local provisional release and verifies copied-image checksums and fold manifests before writing `READY.json`. A source-code clone alone does not include the datasets or prepared training trees.
+
+### Train and analyze development experiments
+
+Run a one-epoch pipeline check on fold 0:
 
 ```powershell
-.\scripts\train-provisional.ps1 -Model tgpn -Folds 0 -Epochs 1 -BatchSize 2 -Workers 4 -Device cuda
+.\scripts\train-provisional.ps1 -Model tgpn -Folds 0 -Epochs 1 -BatchSize 2 -Device auto
 ```
 
-The proposed model uses an aligned single-channel silhouette, whole-body and
-lower-body features, adjacent-frame motion, residual dilated temporal
-convolutions, lightweight attention, and dense per-frame phase and boundary
-outputs. See [`docs/THERMAL_GAITPHASENET.md`](docs/THERMAL_GAITPHASENET.md) for
-the required run order, temporal controls, and full five-fold command.
+This checks the training workflow; its score is not a paper result. For the five-fold experiment:
 
-After fold 0 completes successfully, use `-Folds 0,1,2,3,4` for the full five-fold experiment. Training outputs remain local under `artifacts/runs/`.
+```powershell
+.\scripts\train-provisional.ps1 -Model tgpn -Folds 0,1,2,3,4 -Epochs 30 -BatchSize 2 -Device auto
+```
 
-See [`docs/reproducibility.md`](docs/reproducibility.md), [`docs/experimental_protocol.md`](docs/experimental_protocol.md), [`docs/DATA_STATEMENT.md`](docs/DATA_STATEMENT.md), and [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
+Use the [TGPN guide](docs/THERMAL_GAITPHASENET.md) for baseline comparisons, temporal controls, and final evaluation safeguards. Each run records its configuration, environment, checkpoint, predictions, metrics, and learning curves where applicable under `artifacts/runs/`.
 
-The current real-corpus gate results are recorded in [`docs/DATA_AUDIT_2026-08-27.md`](docs/DATA_AUDIT_2026-08-27.md).
+Aggregate the registered development runs when their local artifacts are available:
+
+```powershell
+.\.venv\Scripts\python.exe -m gait_phase.cli aggregate-results --registry configs/development_runs_v1.yaml --workspace . --output artifacts/paper_assets/development_v2 --bootstrap-iterations 2000
+```
+
+The registry references specific saved runs; newly generated runs must be registered before aggregating them. Analysis can also be generated from an individual run's saved predictions using the `evaluate` and `make-paper-assets` commands. See the [reproduction guide](docs/reproducibility.md) for details.
+
+### Validate the codebase
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests -q
+```
+
+Tests cover configuration, manifests, annotations, splitting, prepared data, model contracts, metrics, experiment summaries, and the command-line workflow. Running them does not reproduce GPU training or validate anatomical labels.
+
+## Repository organization
+
+| Path | Purpose |
+| --- | --- |
+| [src/gait_phase/](src/gait_phase/) | Research pipeline, models, training, evaluation, and paper-asset generation |
+| [configs/](configs/) | Study settings and registered development experiments |
+| [scripts/](scripts/) | Training launchers, environment setup, and annotation audit utilities |
+| [tests/](tests/) | Automated implementation checks |
+| [docs/](docs/) | Method, annotation, data, and reproduction documentation |
+| [docs/paper/](docs/paper/) | Earlier manuscript and paper outline |
+| [annotations/](annotations/) | Annotation protocols and local release organization |
+| [data/](data/) | Local source data, manifests, and prepared datasets |
+| [artifacts/](artifacts/) | Local experiment outputs and generated evidence |
+| [inventory/](inventory/) | Preserved data-lineage and inventory records |
+| [legacy/](legacy/) | Original single-frame research code and historical experiments |
+
+The earlier manuscript in `docs/paper/` describes the initial ResNet152V2/InceptionV3 study. The research framing here follows the revised temporal-modeling manuscript. Some dated documentation describes earlier stages of the work; consult the current code, study configuration, and run registry for implementation details.
